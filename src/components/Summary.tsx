@@ -44,7 +44,7 @@ export function Summary({
   const discountSavings = hasPersonalDiscount ? quote.grandTotal - discountedTotal : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-5">
       <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-inner shadow-white/5">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-white/50">Услуги</h3>
         <div className="mt-2 flex items-baseline justify-between">

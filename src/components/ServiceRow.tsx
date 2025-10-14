@@ -221,7 +221,7 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
 
       {/* Mobile Card Layout */}
       {isMobileView && (
-        <div className="space-y-3">
+        <div className="space-y-3 pb-5">
           {quoteLines.length === 0 && (
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-6 py-10 text-center text-sm text-white/40">
               Добавьте услуги, чтобы рассчитать смету
@@ -310,7 +310,7 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
 
       {/* Desktop Table Layout */}
       {!isMobileView && (
-        <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04] shadow-inner shadow-white/5">
+        <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04] shadow-inner shadow-white/5 mb-5">
           <table className="min-w-full divide-y divide-white/8">
           <thead>
             <tr>

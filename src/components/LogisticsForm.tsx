@@ -120,7 +120,7 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
   const totalCount = quote?.shipments.reduce((sum, shipment) => sum + shipment.count, 0) ?? 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-5">
       {shipments.map((shipment, index) => {
         const mode = shipment.mode ?? "auto";
         const isManual = mode === "manual";

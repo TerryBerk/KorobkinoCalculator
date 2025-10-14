@@ -1113,7 +1113,12 @@ export function KorobkinoCalculator({
           onChange={setActiveTabIndex}
         >
           {/* Mobile Content */}
-          <Tab.Panels className="flex-1 overflow-y-auto px-3 py-4 sm:px-4">
+          <Tab.Panels className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 sm:px-4"
+            style={{ 
+              WebkitOverflowScrolling: 'touch',
+              overscrollBehavior: 'contain'
+            }}
+          >
             <Tab.Panel className="h-full">
               <ServicesTab
                 services={services}
