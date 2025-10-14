@@ -14,7 +14,7 @@ if (container) {
   const root = createRoot(container);
   root.render(
     <React.StrictMode>
-      <div className="min-h-screen bg-slate-950 py-8">
+      <div className="min-h-screen bg-transparent py-12">
         <div className="mx-auto max-w-5xl px-4">
           <KorobkinoCalculator urls={urls} />
         </div>

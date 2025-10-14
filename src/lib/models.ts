@@ -41,6 +41,8 @@ export type QuoteLine = CartItem & {
   unitPrice: number;
   tariffLabel?: TariffLabel;
   lineTotal: number;
+  minQty?: number;
+  note?: string;
 };
 
 export type Quote = {
