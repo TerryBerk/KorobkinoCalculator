@@ -273,11 +273,25 @@ export function KorobkinoCalculator({
   const [personalDiscountPercent, setPersonalDiscountPercent] = useState(0);
   const calculatorRef = useRef<HTMLDivElement | null>(null);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
+  const [isMobileView, setIsMobileView] = useState(false);
 
   const formatCurrency = useCallback(
     (value: number) => formatNumber(value, locale === "en" ? "en-US" : "ru-RU"),
     [locale]
   );
+
+  // Detect mobile view based on screen width
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    
+    const checkMobileView = () => {
+      setIsMobileView(window.innerWidth < 640); // 640px is Tailwind's sm breakpoint
+    };
+    
+    checkMobileView();
+    window.addEventListener("resize", checkMobileView);
+    return () => window.removeEventListener("resize", checkMobileView);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -638,6 +652,170 @@ export function KorobkinoCalculator({
     );
   }
 
+  // Mobile Layout
+  if (isMobileView) {
+    return (
+      <div
+        ref={calculatorRef}
+        className="fixed inset-0 flex flex-col overflow-hidden"
+        style={{
+          background: mergedTheme.background,
+          color: mergedTheme.text
+        }}
+      >
+        {/* Mobile Header */}
+        <header className="shrink-0 border-b border-white/10 bg-[rgba(9,18,31,0.95)] px-4 py-3 backdrop-blur-xl">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <img src="/icons/favicon.svg" alt="Korobkino" className="h-5 w-5 shrink-0" />
+              <h1 className="text-lg font-semibold text-white truncate">
+                Korobkino Calculator
+              </h1>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleOpenResetConfirm}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-lg font-semibold text-white/70 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/30"
+                aria-label="Сбросить калькулятор"
+              >
+                ×
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenNewCalculator}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-[#ff7a00]/50 bg-[#ff7a00] text-xl font-semibold text-[#05070c] shadow-[0_12px_35px_rgba(255,122,0,0.35)] transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/50"
+                aria-label="Открыть новый калькулятор"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <Tab.Group
+          as="div"
+          className="flex flex-1 flex-col overflow-hidden"
+          selectedIndex={activeTabIndex}
+          onChange={setActiveTabIndex}
+        >
+          {/* Mobile Content */}
+          <Tab.Panels className="flex-1 overflow-y-auto px-3 py-4 sm:px-4">
+            <Tab.Panel className="h-full">
+              <ServicesTab
+                services={services}
+                cartItems={cart}
+                quoteLines={quote.items}
+                formatCurrency={formatCurrency}
+                onAdd={handleAddService}
+                onQtyChange={handleQtyChange}
+                onRemove={handleRemove}
+                isMobileView={true}
+              />
+            </Tab.Panel>
+            <Tab.Panel className="h-full">
+              <LogisticsForm
+                rows={logisticsRows}
+                value={logisticsInputs}
+                onChange={setLogisticsInputs}
+                formatCurrency={formatCurrency}
+                quote={quote.logistics}
+              />
+            </Tab.Panel>
+            <Tab.Panel className="h-full">
+              <Summary
+                quote={quote}
+                formatCurrency={formatCurrency}
+                onExportCsv={handleExportCsv}
+                onCopyLink={handleCopyLink}
+                copyStatus={copyStatus}
+                shareUrl={shareUrl}
+                personalDiscountEnabled={personalDiscountEnabled}
+                personalDiscountPercent={personalDiscountPercent}
+                onPersonalDiscountToggle={handlePersonalDiscountToggle}
+                onPersonalDiscountPercentChange={handlePersonalDiscountPercentChange}
+              />
+            </Tab.Panel>
+          </Tab.Panels>
+
+          {/* Mobile Bottom Tabs */}
+          <Tab.List className="shrink-0 flex gap-0 border-t border-white/10 bg-[rgba(9,18,31,0.95)] backdrop-blur-xl">
+            {tabLabels.map((label) => (
+              <Tab
+                key={label}
+                className={({ selected }) =>
+                  `flex-1 px-4 py-4 text-sm font-semibold transition ${
+                    selected
+                      ? "bg-[#ff7a00] text-[#05070c]"
+                      : "text-white/60 hover:text-white hover:bg-white/5"
+                  }`
+                }
+              >
+                {label}
+              </Tab>
+            ))}
+          </Tab.List>
+        </Tab.Group>
+
+        <Transition show={isResetConfirmOpen} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={setResetConfirmOpen}>
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-200"
+              enterFrom="opacity-0"
+              enterTo="opacity-100"
+              leave="ease-in duration-150"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <div className="fixed inset-0 bg-[#050b13]/80 backdrop-blur-sm" />
+            </Transition.Child>
+
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-6">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-200"
+                  enterFrom="opacity-0 scale-95 translate-y-4"
+                  enterTo="opacity-100 scale-100 translate-y-0"
+                  leave="ease-in duration-150"
+                  leaveFrom="opacity-100 scale-100 translate-y-0"
+                  leaveTo="opacity-0 scale-95 translate-y-4"
+                >
+                  <Dialog.Panel className="w-full max-w-sm rounded-3xl border border-white/10 bg-[radial-gradient(120%_160%_at_50%_0%,rgba(27,42,63,0.95)_0%,rgba(9,18,31,0.98)_100%)] p-6 shadow-[0_35px_90px_rgba(5,13,24,0.65)]">
+                    <Dialog.Title className="text-lg font-semibold text-white">
+                      Сбросить калькулятор?
+                    </Dialog.Title>
+                    <Dialog.Description className="mt-2 text-sm text-white/60">
+                      Все выбранные услуги, данные логистики и скидки будут удалены. Действие нельзя отменить.
+                    </Dialog.Description>
+                    <div className="mt-6 flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={handleCancelReset}
+                        className="inline-flex flex-1 items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/20"
+                      >
+                        Отмена
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmReset}
+                        className="inline-flex flex-1 items-center justify-center rounded-xl border border-[#ff7a00]/60 bg-[#ff7a00] px-4 py-2 text-sm font-semibold text-[#05070c] shadow-[0_12px_35px_rgba(255,122,0,0.35)] transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/50"
+                      >
+                        Сбросить
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
+      </div>
+    );
+  }
+
+  // Desktop Layout (Original)
   return (
     <div
       ref={calculatorRef}

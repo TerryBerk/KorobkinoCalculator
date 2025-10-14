@@ -10,6 +10,7 @@ type ServicesTabProps = {
   onAdd: (service: ServiceRow) => void;
   onQtyChange: (code: string, qty: number) => void;
   onRemove: (code: string) => void;
+  isMobileView?: boolean;
 };
 
 type Option = {
@@ -49,7 +50,7 @@ const columns = [
   ""
 ] as const;
 
-export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, onAdd, onQtyChange, onRemove }: ServicesTabProps) {
+export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, onAdd, onQtyChange, onRemove, isMobileView = false }: ServicesTabProps) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Option | null>(null);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
@@ -203,8 +204,99 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
         </Combobox>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04] shadow-inner shadow-white/5">
-        <table className="min-w-full divide-y divide-white/8">
+      {/* Mobile Card Layout */}
+      {isMobileView && (
+        <div className="space-y-3">
+          {quoteLines.length === 0 && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-6 py-10 text-center text-sm text-white/40">
+              Добавьте услуги, чтобы рассчитать смету
+            </div>
+          )}
+          {displayLines.map((line) => (
+            <div
+              key={line.code}
+              className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-inner shadow-white/5"
+            >
+              {/* Code and Name */}
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-[#ff9a33]">{line.code}</div>
+                  <div className="mt-1 text-sm font-medium text-white">{line.name}</div>
+                  {line.tariffLabel && (
+                    <p className="mt-1 text-xs text-white/50">{line.tariffLabel}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="shrink-0 rounded-lg border border-transparent px-3 py-1.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/20 focus:outline-none focus:ring-2 focus:ring-rose-400/40"
+                  onClick={() => onRemove(line.code)}
+                >
+                  Удалить
+                </button>
+              </div>
+
+              {/* Details Grid */}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div className="text-xs text-white/50">Количество</div>
+                  <input
+                    type="number"
+                    className="mt-1 w-full appearance-none rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-right text-white focus:border-[#ff7a00]/50 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/30"
+                    step={1}
+                    min={line.minQty ?? 1}
+                    value={cartItems.find((item) => item.code === line.code)?.qty ?? line.qty}
+                    onChange={(event) => onQtyChange(line.code, Number(event.target.value))}
+                  />
+                </div>
+                <div>
+                  <div className="text-xs text-white/50">Единица</div>
+                  <div className="mt-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-right text-white/70">
+                    {line.unit ?? "ед."}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-white/50">Цена за ед.</div>
+                  <div className="mt-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 font-mono text-right text-white">
+                    {formatCurrency(line.unitPrice)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-white/50">Сумма</div>
+                  <div className="mt-1 rounded-lg border border-white/10 bg-[#ff7a00]/10 px-2 py-1.5 font-mono text-right font-semibold text-white">
+                    {formatCurrency(line.lineTotal)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Note */}
+              {line.note?.trim() && (
+                <div className="mt-3 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white/60">
+                  {line.note}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Mobile Total */}
+          {quoteLines.length > 0 && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold uppercase tracking-wide text-white/60">
+                  Итого за услуги
+                </div>
+                <div className="font-mono text-lg font-semibold text-white">
+                  {formatCurrency(servicesTotal)}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Desktop Table Layout */}
+      {!isMobileView && (
+        <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04] shadow-inner shadow-white/5">
+          <table className="min-w-full divide-y divide-white/8">
           <thead>
             <tr>
               {columns.map((column) => (
@@ -308,6 +400,7 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
           )}
         </table>
       </div>
+      )}
     </div>
   );
 }
