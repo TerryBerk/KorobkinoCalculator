@@ -4,6 +4,8 @@ export type {
   CartItem,
   LogisticsInput,
   LogisticsRow,
+  LogisticsQuote,
+  LogisticsShipmentQuote,
   MountOptions,
   ParamsMap,
   Quote,

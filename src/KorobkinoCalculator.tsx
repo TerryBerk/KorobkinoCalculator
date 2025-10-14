@@ -1,5 +1,5 @@
-import { Tab } from "@headlessui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Dialog, Tab, Transition } from "@headlessui/react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LogisticsForm } from "./components/LogisticsForm";
 import { ServicesTab } from "./components/ServiceRow";
 import { Summary } from "./components/Summary";
@@ -38,16 +38,47 @@ const defaultTheme: ThemeTokens = {
 
 type ShareState = {
   cart: CartItem[];
-  logistics?: Partial<LogisticsInput>;
+  logistics: LogisticsInput[];
 };
 
-const defaultLogisticsInput: LogisticsInput = {
+const tabLabels = ["Услуги", "Логистика", "Итог"] as const;
+
+const defaultLogisticsShipment: LogisticsInput = {
   marketplace: "",
   location: "",
   kind: "Короб",
   count: 0,
-  pickupVolumeCbm: 0
+  pickupVolumeCbm: 0,
+  mode: "auto"
 };
+
+function createEmptyShipment(seed?: Partial<LogisticsInput>): LogisticsInput {
+  const kind =
+    seed?.kind === "Палет" ? "Палет" : seed?.kind === "Короб" ? "Короб" : defaultLogisticsShipment.kind;
+  const count = Number.isFinite(seed?.count) ? Number(seed?.count) : defaultLogisticsShipment.count;
+  const pickupVolumeCbm = Number.isFinite(seed?.pickupVolumeCbm)
+    ? Number(seed?.pickupVolumeCbm)
+    : defaultLogisticsShipment.pickupVolumeCbm;
+  const mode = seed?.mode === "manual" ? "manual" : "auto";
+  const marketplace = seed?.marketplace ?? defaultLogisticsShipment.marketplace;
+  const location = seed?.location ?? defaultLogisticsShipment.location;
+  const shipment: LogisticsInput = {
+    marketplace,
+    location,
+    kind,
+    count,
+    pickupVolumeCbm,
+    mode
+  };
+  if (mode === "manual") {
+    shipment.customPricePerShipment = Number.isFinite(seed?.customPricePerShipment)
+      ? Number(seed?.customPricePerShipment)
+      : 0;
+  } else if (Number.isFinite(seed?.customPricePerShipment)) {
+    shipment.customPricePerShipment = seed?.customPricePerShipment;
+  }
+  return shipment;
+}
 
 function dedupeCart(items: CartItem[]): CartItem[] {
   const map = new Map<string, CartItem>();
@@ -72,15 +103,63 @@ function formatNumber(value: number, locale: string) {
 }
 
 function parseShare(search: string): ShareState {
-  if (!search) return { cart: [] };
+  if (!search) return { cart: [], logistics: [] };
   const params = new URLSearchParams(search);
   const itemsParam = params.get("items");
-  const logistics: Partial<LogisticsInput> = {};
-  if (params.has("marketplace")) logistics.marketplace = params.get("marketplace") ?? "";
-  if (params.has("location")) logistics.location = params.get("location") ?? "";
-  if (params.has("kind")) logistics.kind = params.get("kind") as LogisticsInput["kind"];
-  if (params.has("count")) logistics.count = Number(params.get("count")) || 0;
-  if (params.has("volume")) logistics.pickupVolumeCbm = Number(params.get("volume")) || 0;
+  const logistics: LogisticsInput[] = [];
+  const shipmentsParam = params.get("shipments");
+  if (shipmentsParam) {
+    shipmentsParam
+      .split(";")
+      .map((chunk) => chunk.trim())
+      .filter(Boolean)
+      .forEach((chunk) => {
+        const [
+          marketplace = "",
+          location = "",
+          kind = "Короб",
+          countStr = "0",
+          volumeStr = "0",
+          modeStr,
+          priceStr
+        ] = chunk.split("|");
+        const count = Number(countStr);
+        const pickupVolumeCbm = Number(volumeStr);
+        const mode = modeStr === "manual" ? "manual" : "auto";
+        const customPrice = Number(priceStr);
+        logistics.push(
+          createEmptyShipment({
+            marketplace,
+            location,
+            kind: kind === "Палет" ? "Палет" : "Короб",
+            count: Number.isFinite(count) ? count : 0,
+            pickupVolumeCbm: Number.isFinite(pickupVolumeCbm) ? pickupVolumeCbm : 0,
+            mode,
+            customPricePerShipment:
+              mode === "manual" && Number.isFinite(customPrice) ? customPrice : undefined
+          })
+        );
+      });
+  }
+
+  if (logistics.length === 0) {
+    const marketplace = params.get("marketplace");
+    const location = params.get("location");
+    const kind = params.get("kind") as LogisticsInput["kind"] | null;
+    const count = Number(params.get("count"));
+    const volume = Number(params.get("volume"));
+    if (marketplace || location || kind || params.has("count")) {
+      logistics.push(
+        createEmptyShipment({
+          marketplace: marketplace ?? "",
+          location: location ?? "",
+          kind: kind === "Палет" ? "Палет" : "Короб",
+          count: Number.isFinite(count) ? count : 0,
+          pickupVolumeCbm: Number.isFinite(volume) ? volume : 0
+        })
+      );
+    }
+  }
 
   const cart: CartItem[] =
     itemsParam
@@ -96,7 +175,7 @@ function parseShare(search: string): ShareState {
   return { cart, logistics };
 }
 
-function encodeShareUrl(cart: CartItem[], logistics: LogisticsInput | undefined): string {
+function encodeShareUrl(cart: CartItem[], logistics: LogisticsInput[]): string {
   if (typeof window === "undefined") return "";
   const url = new URL(window.location.href);
   const params = url.searchParams;
@@ -111,23 +190,48 @@ function encodeShareUrl(cart: CartItem[], logistics: LogisticsInput | undefined)
     params.delete("items");
   }
 
-  if (logistics && logistics.marketplace && logistics.location && logistics.count > 0) {
-    params.set("marketplace", logistics.marketplace);
-    params.set("location", logistics.location);
-    params.set("kind", logistics.kind);
-    params.set("count", String(Math.round(logistics.count)));
-    if (typeof logistics.pickupVolumeCbm === "number") {
-      params.set("volume", String(Number(logistics.pickupVolumeCbm)));
-    } else {
-      params.delete("volume");
-    }
+  const encodedShipments = logistics
+    .filter((shipment) => {
+      if (!shipment.marketplace || !(shipment.count > 0)) return false;
+      const mode = shipment.mode ?? "auto";
+      if (mode === "auto") {
+        return Boolean(shipment.location);
+      }
+      return true;
+    })
+    .map((shipment) => {
+      const volume =
+        typeof shipment.pickupVolumeCbm === "number" && Number.isFinite(shipment.pickupVolumeCbm)
+          ? shipment.pickupVolumeCbm
+          : 0;
+      const mode = shipment.mode ?? "auto";
+      const customPrice =
+        mode === "manual" && typeof shipment.customPricePerShipment === "number"
+          ? shipment.customPricePerShipment
+          : "";
+      return [
+        shipment.marketplace,
+        shipment.location,
+        shipment.kind,
+        Math.round(shipment.count),
+        Number(volume.toFixed(2)),
+        mode,
+        customPrice !== "" ? Number(Number(customPrice).toFixed(2)) : ""
+      ].join("|");
+    });
+
+  if (encodedShipments.length > 0) {
+    params.set("shipments", encodedShipments.join(";"));
   } else {
-    params.delete("marketplace");
-    params.delete("location");
-    params.delete("kind");
-    params.delete("count");
-    params.delete("volume");
+    params.delete("shipments");
   }
+
+  // Clean up legacy params
+  params.delete("marketplace");
+  params.delete("location");
+  params.delete("kind");
+  params.delete("count");
+  params.delete("volume");
 
   url.search = params.toString();
   return url.toString();
@@ -146,7 +250,7 @@ export function KorobkinoCalculator({
   theme
 }: KorobkinoCalculatorProps) {
   const shareState = useMemo(() => {
-    if (typeof window === "undefined") return { cart: [] };
+    if (typeof window === "undefined") return { cart: [], logistics: [] };
     return parseShare(window.location.search);
   }, []);
 
@@ -157,11 +261,18 @@ export function KorobkinoCalculator({
   const [logisticsRows, setLogisticsRows] = useState<LogisticsRow[]>([]);
   const [params, setParams] = useState<ParamsMap>({});
   const [cart, setCart] = useState<CartItem[]>(() => dedupeCart(shareState.cart));
-  const [logisticsInput, setLogisticsInput] = useState<LogisticsInput>(() => ({
-    ...defaultLogisticsInput,
-    ...shareState.logistics
-  }));
+  const [logisticsInputs, setLogisticsInputs] = useState<LogisticsInput[]>(() => {
+    if (shareState.logistics.length > 0) {
+      return shareState.logistics.map((shipment) => createEmptyShipment(shipment));
+    }
+    return [createEmptyShipment()];
+  });
   const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">("idle");
+  const [isResetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [personalDiscountEnabled, setPersonalDiscountEnabled] = useState(false);
+  const [personalDiscountPercent, setPersonalDiscountPercent] = useState(0);
+  const calculatorRef = useRef<HTMLDivElement | null>(null);
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
 
   const formatCurrency = useCallback(
     (value: number) => formatNumber(value, locale === "en" ? "en-US" : "ru-RU"),
@@ -185,6 +296,14 @@ export function KorobkinoCalculator({
         const serviceRows = toServiceRows(parseCsv(servicesRaw.payload));
         const logisticsRowsParsed = toLogisticsRows(parseCsv(logisticsRaw.payload));
         const paramsMap = toParamsMap(parseCsv(paramsRaw.payload));
+        if (import.meta.env?.DEV) {
+          console.log("[Korobkino] datasets loaded", {
+            services: serviceRows.length,
+            logistics: logisticsRowsParsed.length,
+            params: Object.keys(paramsMap).length,
+            logisticsPreview: logisticsRowsParsed.slice(0, 3)
+          });
+        }
         setCacheOnly(servicesRaw.cacheOnly || logisticsRaw.cacheOnly || paramsRaw.cacheOnly);
         setServices(serviceRows);
         setLogisticsRows(logisticsRowsParsed);
@@ -230,19 +349,12 @@ export function KorobkinoCalculator({
     );
   }, [services, params]);
 
-  const activeLogisticsInput = useMemo(() => {
-    if (!logisticsInput.marketplace || !logisticsInput.location || logisticsInput.count <= 0) {
-      return undefined;
-    }
-    return logisticsInput;
-  }, [logisticsInput]);
-
   const quote = useMemo<Quote>(() => {
     if (services.length === 0) {
       return { items: [], grandTotal: 0 };
     }
-    return buildQuote(services, cart, logisticsRows, activeLogisticsInput, params);
-  }, [services, cart, logisticsRows, activeLogisticsInput, params]);
+    return buildQuote(services, cart, logisticsRows, logisticsInputs, params);
+  }, [services, cart, logisticsRows, logisticsInputs, params]);
 
   useEffect(() => {
     if (quote && onQuoteChange) {
@@ -303,6 +415,22 @@ export function KorobkinoCalculator({
     setCart((prev) => prev.filter((item) => item.code !== code));
   }, []);
 
+  const handlePersonalDiscountToggle = useCallback((enabled: boolean) => {
+    setPersonalDiscountEnabled(enabled);
+    if (!enabled) {
+      setPersonalDiscountPercent(0);
+    }
+  }, []);
+
+  const handlePersonalDiscountPercentChange = useCallback((percent: number) => {
+    if (!Number.isFinite(percent)) {
+      setPersonalDiscountPercent(0);
+      return;
+    }
+    const clamped = Math.min(100, Math.max(0, Math.round(percent)));
+    setPersonalDiscountPercent(clamped);
+  }, []);
+
   const handleExportCsv = useCallback(() => {
     if (quote.items.length === 0) return;
     const header = [
@@ -324,15 +452,43 @@ export function KorobkinoCalculator({
       String(line.lineTotal)
     ]);
     if (quote.logistics) {
-      rows.push([
-        "LOG",
-        "Логистика",
-        String(logisticsInput.count),
-        quote.logistics.discount > 0 ? `Скидка ${Math.round(quote.logistics.discount * 100)}%` : "-",
-        String(quote.logistics.pricePerShipment),
-        logisticsInput.kind,
-        String(quote.logistics.total)
-      ]);
+      quote.logistics.shipments.forEach((shipment, index) => {
+        rows.push([
+          `LOG-${index + 1}`,
+          [
+            "Логистика",
+            shipment.input.marketplace,
+            shipment.input.location,
+            shipment.input.kind
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          String(shipment.count),
+          shipment.discount > 0
+            ? `Скидка ${Math.round(shipment.discount * 100)}%${
+                shipment.matchedRange ? ` · Диапазон ${shipment.matchedRange}` : ""
+              }`
+            : shipment.matchedRange
+              ? `Диапазон ${shipment.matchedRange}`
+              : "-",
+          String(shipment.pricePerShipment),
+          shipment.input.kind,
+          String(shipment.total)
+        ]);
+      });
+      if (quote.logistics.shipments.length > 1) {
+        rows.push([
+          "LOG",
+          "Логистика · Итого",
+          String(
+            quote.logistics.shipments.reduce((sum, shipment) => sum + shipment.count, 0)
+          ),
+          "-",
+          "-",
+          "-",
+          String(quote.logistics.total)
+        ]);
+      }
     }
     const csv = [header, ...rows]
       .map((line) => line.map(quoteCsvCell).join(","))
@@ -348,9 +504,9 @@ export function KorobkinoCalculator({
       document.body.removeChild(link);
       setTimeout(() => URL.revokeObjectURL(link.href), 2000);
     }
-  }, [quote, logisticsInput]);
+  }, [quote]);
 
-  const shareUrl = useMemo(() => encodeShareUrl(cart, activeLogisticsInput), [cart, activeLogisticsInput]);
+  const shareUrl = useMemo(() => encodeShareUrl(cart, logisticsInputs), [cart, logisticsInputs]);
 
   const handleCopyLink = useCallback(async () => {
     if (!shareUrl) return;
@@ -377,6 +533,41 @@ export function KorobkinoCalculator({
     }
   }, [shareUrl]);
 
+  const handleResetCalculator = useCallback(() => {
+    setCart([]);
+    setLogisticsInputs([createEmptyShipment()]);
+    setPersonalDiscountEnabled(false);
+    setPersonalDiscountPercent(0);
+    setCopyStatus("idle");
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.search = "";
+      url.hash = "";
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, [setCart, setLogisticsInputs, setPersonalDiscountEnabled, setPersonalDiscountPercent]);
+
+  const handleOpenResetConfirm = useCallback(() => {
+    setResetConfirmOpen(true);
+  }, []);
+
+  const handleCancelReset = useCallback(() => {
+    setResetConfirmOpen(false);
+  }, []);
+
+  const handleConfirmReset = useCallback(() => {
+    handleResetCalculator();
+    setResetConfirmOpen(false);
+  }, [handleResetCalculator]);
+
+  const handleOpenNewCalculator = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = "";
+    window.open(url.toString(), "_blank", "noopener");
+  }, []);
+
   useEffect(() => {
     if (typeof window !== "undefined" && shareUrl) {
       window.history.replaceState(null, "", shareUrl);
@@ -387,7 +578,35 @@ export function KorobkinoCalculator({
 
   useEffect(() => {
     setCopyStatus("idle");
-  }, [cart, logisticsInput]);
+  }, [cart, logisticsInputs]);
+
+  useEffect(() => {
+    const handleTabSwitch = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      if (isResetConfirmOpen) return;
+      const root = calculatorRef.current;
+      if (!root) return;
+      const target = event.target as HTMLElement | null;
+      if (!target || !root.contains(target)) {
+        return;
+      }
+      const tagName = target.tagName;
+      if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT" || target.isContentEditable) {
+        return;
+      }
+      event.preventDefault();
+      setActiveTabIndex((prev) => {
+        const reverse = event.shiftKey || event.altKey;
+        if (reverse) {
+          return (prev - 1 + tabLabels.length) % tabLabels.length;
+        }
+        return (prev + 1) % tabLabels.length;
+      });
+    };
+
+    window.addEventListener("keydown", handleTabSwitch);
+    return () => window.removeEventListener("keydown", handleTabSwitch);
+  }, [isResetConfirmOpen]);
 
   if (status === "loading" && services.length === 0) {
     return (
@@ -421,6 +640,7 @@ export function KorobkinoCalculator({
 
   return (
     <div
+      ref={calculatorRef}
       className="w-full rounded-[28px] border px-6 py-7 shadow-[0_40px_120px_rgba(5,13,24,0.55)] backdrop-blur-xl sm:px-10 sm:py-10"
       style={{
         background: `linear-gradient(155deg, rgba(13,24,41,0.92) 0%, rgba(8,16,27,0.88) 52%, rgba(5,11,19,0.92) 100%)`,
@@ -446,16 +666,41 @@ export function KorobkinoCalculator({
             Детерминированный расчёт сметы по прайс-листу и логистике.
           </p>
         </div>
-        {cacheOnly && (
-          <span className="rounded-full border border-amber-400/40 bg-amber-400/15 px-3 py-1 text-xs font-medium text-amber-200 shadow-[0_10px_30px_rgba(255,163,67,0.2)]">
-            Показаны кешированные данные
-          </span>
-        )}
+        <div className="flex items-center gap-3 self-end sm:self-auto">
+          {cacheOnly && (
+            <span className="rounded-full border border-amber-400/40 bg-amber-400/15 px-3 py-1 text-xs font-medium text-amber-200 shadow-[0_10px_30px_rgba(255,163,67,0.2)]">
+              Показаны кешированные данные
+            </span>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleOpenResetConfirm}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-lg font-semibold text-white/70 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/30"
+              aria-label="Сбросить калькулятор"
+            >
+              ×
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenNewCalculator}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#ff7a00]/50 bg-[#ff7a00] text-xl font-semibold text-[#05070c] shadow-[0_12px_35px_rgba(255,122,0,0.35)] transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/50"
+              aria-label="Открыть новый калькулятор"
+            >
+              +
+            </button>
+          </div>
+        </div>
       </header>
 
-      <Tab.Group as="div" className="mt-8">
+      <Tab.Group
+        as="div"
+        className="mt-8"
+        selectedIndex={activeTabIndex}
+        onChange={setActiveTabIndex}
+      >
         <Tab.List className="flex gap-2 rounded-2xl border border-white/10 bg-white/5 p-2 backdrop-blur">
-          {["Услуги", "Логистика", "Итог"].map((label) => (
+          {tabLabels.map((label) => (
             <Tab
               key={label}
               className={({ selected }) =>
@@ -486,8 +731,8 @@ export function KorobkinoCalculator({
           <Tab.Panel>
             <LogisticsForm
               rows={logisticsRows}
-              value={logisticsInput}
-              onChange={setLogisticsInput}
+              value={logisticsInputs}
+              onChange={setLogisticsInputs}
               formatCurrency={formatCurrency}
               quote={quote.logistics}
             />
@@ -500,11 +745,69 @@ export function KorobkinoCalculator({
               onCopyLink={handleCopyLink}
               copyStatus={copyStatus}
               shareUrl={shareUrl}
-              shipmentsCount={activeLogisticsInput?.count ?? 0}
+              personalDiscountEnabled={personalDiscountEnabled}
+              personalDiscountPercent={personalDiscountPercent}
+              onPersonalDiscountToggle={handlePersonalDiscountToggle}
+              onPersonalDiscountPercentChange={handlePersonalDiscountPercentChange}
             />
           </Tab.Panel>
         </Tab.Panels>
       </Tab.Group>
+
+      <Transition show={isResetConfirmOpen} as={Fragment}>
+        <Dialog as="div" className="relative z-50" onClose={setResetConfirmOpen}>
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-200"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-150"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-[#050b13]/80 backdrop-blur-sm" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-6">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-200"
+                enterFrom="opacity-0 scale-95 translate-y-4"
+                enterTo="opacity-100 scale-100 translate-y-0"
+                leave="ease-in duration-150"
+                leaveFrom="opacity-100 scale-100 translate-y-0"
+                leaveTo="opacity-0 scale-95 translate-y-4"
+              >
+                <Dialog.Panel className="w-full max-w-sm rounded-3xl border border-white/10 bg-[radial-gradient(120%_160%_at_50%_0%,rgba(27,42,63,0.95)_0%,rgba(9,18,31,0.98)_100%)] p-6 shadow-[0_35px_90px_rgba(5,13,24,0.65)]">
+                  <Dialog.Title className="text-lg font-semibold text-white">
+                    Сбросить калькулятор?
+                  </Dialog.Title>
+                  <Dialog.Description className="mt-2 text-sm text-white/60">
+                    Все выбранные услуги, данные логистики и скидки будут удалены. Действие нельзя отменить.
+                  </Dialog.Description>
+                  <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={handleCancelReset}
+                      className="inline-flex flex-1 items-center justify-center rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/20 sm:flex-none sm:px-5"
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmReset}
+                      className="inline-flex flex-1 items-center justify-center rounded-xl border border-[#ff7a00]/60 bg-[#ff7a00] px-4 py-2 text-sm font-semibold text-[#05070c] shadow-[0_12px_35px_rgba(255,122,0,0.35)] transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/50 sm:flex-none sm:px-5"
+                    >
+                      Сбросить
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
     </div>
   );
 }

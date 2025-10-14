@@ -36,16 +36,22 @@ const fixedService: ServiceRow = {
 };
 
 describe("pickUnitPriceByQty", () => {
-  it("returns 100 tariff for qty below second threshold", () => {
-    const result = pickUnitPriceByQty(service, 150, params);
+  it("returns до 100 tariff for small qty", () => {
+    const result = pickUnitPriceByQty(service, 50, params);
     expect(result.unitPrice).toBe(50);
-    expect(result.tariffLabel).toBe("от 100 ед.");
+    expect(result.tariffLabel).toBe("до 100 ед.");
   });
 
-  it("returns 500 tariff when qty crosses threshold", () => {
-    const result = pickUnitPriceByQty(service, 600, params);
+  it("returns middle tier when qty crosses first threshold", () => {
+    const result = pickUnitPriceByQty(service, 200, params);
     expect(result.unitPrice).toBe(40);
-    expect(result.tariffLabel).toBe("от 500 ед.");
+    expect(result.tariffLabel).toBe("100-499 ед.");
+  });
+
+  it("returns 500+ tariff when qty crosses second threshold", () => {
+    const result = pickUnitPriceByQty(service, 600, params);
+    expect(result.unitPrice).toBe(30);
+    expect(result.tariffLabel).toBe("500+ ед.");
   });
 
   it("returns fixed price when provided", () => {
@@ -58,7 +64,7 @@ describe("pickUnitPriceByQty", () => {
 describe("calcLineTotal", () => {
   it("multiplies unit price by qty", () => {
     const total = calcLineTotal(service, 120, params);
-    expect(total).toBe(120 * 50);
+    expect(total).toBe(120 * 40);
   });
 
   it("respects fixed price", () => {
@@ -95,6 +101,18 @@ describe("matchLogisticsPrice", () => {
     const result = matchLogisticsPrice(rows, input);
     expect(result.pricePerShipment).toBe(350);
     expect(result.matchedRange).toBe("1-5");
+  });
+
+  it("falls back to the last range when count exceeds configured maximum", () => {
+    const input: LogisticsInput = {
+      marketplace: "Ozon",
+      location: "Москва",
+      kind: "Короб",
+      count: 14
+    };
+    const result = matchLogisticsPrice(rows, input);
+    expect(result.pricePerShipment).toBe(320);
+    expect(result.matchedRange).toBe("6-10");
   });
 });
 
@@ -136,16 +154,98 @@ describe("buildQuote", () => {
       pickupVolumeCbm: 4
     };
 
-    const quote = buildQuote([service, fixedService], cart, logisticsRows, logisticsInput, params);
-    // Service total = 600 * 40 + 1500
+    const quote = buildQuote([service, fixedService], cart, logisticsRows, [logisticsInput], params);
+    // Service total = 600 * 30 + 1500
     expect(quote.items).toHaveLength(2);
-    expect(quote.items[0].lineTotal).toBe(600 * 40);
+    expect(quote.items[0].lineTotal).toBe(600 * 30);
     expect(quote.items[1].lineTotal).toBe(1500);
-    const servicesTotal = 600 * 40 + 1500;
+    const servicesTotal = 600 * 30 + 1500;
 
     // Logistics: 1200 * 5 = 6000; discount 15% => 5100; pickup extra: (4 - 2) * 1500 = 3000
     // Total logistics = 5100 + 3000 = 8100
     expect(quote.logistics?.total).toBeCloseTo(8100);
+    expect(quote.logistics?.shipments).toHaveLength(1);
+    const shipment = quote.logistics?.shipments[0];
+    expect(shipment).toBeDefined();
+    expect(shipment?.pricePerShipment).toBe(1200);
+    expect(shipment?.discount).toBeCloseTo(0.15);
+    expect(shipment?.pickupSurcharge).toBeCloseTo(3000);
     expect(quote.grandTotal).toBeCloseTo(servicesTotal + 8100);
+  });
+
+  it("aggregates multiple shipments and preserves per-shipment quotes", () => {
+    const multiRows: LogisticsRow[] = [
+      {
+        Маркетплейс: "Ozon",
+        Локация: "Москва",
+        Тип: "Короб",
+        "Диапазон коробов": "1-5",
+        "Цена, ₽": 300
+      },
+      {
+        Маркетплейс: "Ozon",
+        Локация: "Москва",
+        Тип: "Короб",
+        "Диапазон коробов": "6-10",
+        "Цена, ₽": 250
+      },
+      {
+        Маркетплейс: "WB",
+        Локация: "СПБ",
+        Тип: "Палет",
+        "Диапазон коробов": ">=1",
+        "Цена, ₽": 1000
+      }
+    ];
+    const inputs: LogisticsInput[] = [
+      {
+        marketplace: "Ozon",
+        location: "Москва",
+        kind: "Короб",
+        count: 12,
+        pickupVolumeCbm: 0
+      },
+      {
+        marketplace: "WB",
+        location: "СПБ",
+        kind: "Палет",
+        count: 2,
+        pickupVolumeCbm: 0
+      }
+    ];
+
+    const quote = buildQuote([], [], multiRows, inputs, params);
+    expect(quote.logistics?.shipments).toHaveLength(2);
+    const [first, second] = quote.logistics?.shipments ?? [];
+    expect(first.inputIndex).toBe(0);
+    expect(first.matchedRange).toBe("6-10");
+    expect(first.pricePerShipment).toBe(250);
+    expect(first.total).toBeCloseTo(250 * 12);
+    expect(second.inputIndex).toBe(1);
+    expect(second.pricePerShipment).toBe(1000);
+    expect(second.total).toBeCloseTo(1000 * 2);
+    expect(quote.logistics?.total).toBeCloseTo(250 * 12 + 1000 * 2);
+  });
+
+  it("supports manual shipments with custom pricing", () => {
+    const manualInputs: LogisticsInput[] = [
+      {
+        marketplace: "Дополнительно",
+        location: "Тест",
+        kind: "Палет",
+        count: 3,
+        pickupVolumeCbm: 4,
+        mode: "manual",
+        customPricePerShipment: 5000
+      }
+    ];
+
+    const quote = buildQuote([], [], [], manualInputs, params);
+    const manualShipment = quote.logistics?.shipments[0];
+    expect(manualShipment).toBeDefined();
+    expect(manualShipment?.pricePerShipment).toBe(5000);
+    // Base: 5000 * 3 = 15000, pickup extra: (4 - 2) * 1500 = 3000
+    expect(manualShipment?.total).toBeCloseTo(15000 + 3000);
+    expect(quote.logistics?.total).toBeCloseTo(18000);
   });
 });

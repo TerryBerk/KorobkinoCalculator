@@ -19,14 +19,21 @@ type Option = {
   tariffType: string;
 };
 
+type SortColumn = "code" | "total";
+
+type SortState = {
+  column: SortColumn | null;
+  direction: "asc" | "desc" | null;
+};
+
 const getTariffType = (service: ServiceRow): string => {
   const fixedPrice = service["Фикс. цена"];
   if (fixedPrice != null) {
     return fixedPrice === 0 ? "Бесплатно" : "Фикс";
   }
-  if (service["от 100 ед."] != null) return "от 100";
-  if (service["от 500 ед."] != null) return "от 500";
-  if (service["от 1000 ед."] != null) return "от 1000";
+  if (service["от 100 ед."] != null) return "до 100";
+  if (service["от 500 ед."] != null) return "100-499";
+  if (service["от 1000 ед."] != null) return "500+";
   return "—";
 };
 
@@ -46,6 +53,17 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Option | null>(null);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
+  const [sortState, setSortState] = useState<SortState>({ column: null, direction: null });
+
+  const servicesTotal = useMemo(
+    () => quoteLines.reduce((sum, line) => sum + line.lineTotal, 0),
+    [quoteLines]
+  );
+
+  const codeCollator = useMemo(
+    () => new Intl.Collator("ru", { numeric: true, sensitivity: "base" }),
+    []
+  );
 
   const options = useMemo<Option[]>(() => {
     return services.map((service) => {
@@ -75,6 +93,42 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
     if (!isAlreadyInCart) {
       onAdd(option.service);
     }
+  };
+
+  const handleSort = (column: SortColumn) => {
+    setSortState((prev) => {
+      if (prev.column !== column) {
+        return { column, direction: "asc" };
+      }
+      if (prev.direction === "asc") {
+        return { column, direction: "desc" };
+      }
+      return { column: null, direction: null };
+    });
+  };
+
+  const displayLines = useMemo(() => {
+    if (!sortState.column || !sortState.direction) {
+      return quoteLines;
+    }
+
+    const sorted = [...quoteLines];
+    const modifier = sortState.direction === "asc" ? 1 : -1;
+
+    if (sortState.column === "code") {
+      sorted.sort((a, b) => modifier * codeCollator.compare(a.code, b.code));
+    } else {
+      sorted.sort((a, b) => modifier * (a.lineTotal - b.lineTotal));
+    }
+
+    return sorted;
+  }, [codeCollator, quoteLines, sortState]);
+
+  const renderSortIndicator = (column: SortColumn) => {
+    if (sortState.column !== column || !sortState.direction) {
+      return " ";
+    }
+    return sortState.direction === "asc" ? "^" : "v";
   };
 
   return (
@@ -157,9 +211,28 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
                 <th
                   key={column}
                   scope="col"
-                  className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50"
+                  className={`px-3 py-3 text-xs font-semibold uppercase tracking-wide text-white/50 ${
+                    column === "Сумма" ? "text-right" : "text-left"
+                  }`}
                 >
-                  {column}
+                  {column === "Код" || column === "Сумма" ? (
+                    <button
+                      type="button"
+                      onClick={() => handleSort(column === "Код" ? "code" : "total")}
+                      className={`inline-flex items-center gap-1 transition ${
+                        sortState.column === (column === "Код" ? "code" : "total")
+                          ? "text-white"
+                          : "text-white/60 hover:text-white"
+                      }`}
+                    >
+                      <span>{column}</span>
+                      <span className="inline-block w-3 text-[10px] leading-none text-white/40 text-center">
+                        {renderSortIndicator(column === "Код" ? "code" : "total")}
+                      </span>
+                    </button>
+                  ) : (
+                    column
+                  )}
                 </th>
               ))}
             </tr>
@@ -172,7 +245,7 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
                 </td>
               </tr>
             )}
-            {quoteLines.map((line) => (
+            {displayLines.map((line) => (
               <tr key={line.code} className="text-sm text-white/80 hover:bg-white/5">
                 <td className="whitespace-nowrap px-3 py-3 font-semibold text-[#ff9a33]">
                   {line.code}
@@ -217,6 +290,22 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
               </tr>
             ))}
           </tbody>
+          {quoteLines.length > 0 && (
+            <tfoot>
+              <tr className="border-t border-white/10 bg-white/[0.03] text-sm">
+                <td
+                  colSpan={6}
+                  className="px-3 py-4 text-right text-xs font-semibold uppercase tracking-wide text-white/60 sm:text-sm"
+                >
+                  Итого за услуги
+                </td>
+                <td className="px-3 py-4 font-mono text-right text-base font-semibold text-white sm:text-lg">
+                  {formatCurrency(servicesTotal)}
+                </td>
+                <td colSpan={2} />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     </div>
