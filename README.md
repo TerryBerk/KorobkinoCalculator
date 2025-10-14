@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/icons/favicon.svg" alt="Korobkino Calculator logo" width="96" height="96">
+</p>
+
 # Korobkino Calculator
 
 Лёгкий React-виджет для расчёта сметы по CSV-прайсу из Google Sheets.
@@ -36,6 +40,13 @@ npm run build
 - `korobkino-calculator.umd.js` — UMD-бандл (`window.KorobkinoCalculator.mount`)
 - `style.css` — стили Tailwind
 - `index.d.ts` — типы (генерируются `postbuild`)
+
+### Брендинг
+
+- Исходный логотип: `public/KorobkinoCalculator-logo.png`
+- Фавиконки и манифест: `public/icons/*`, `public/site.webmanifest`, `public/apple-touch-icon.png`
+
+При замене логотипа пересоздайте фавиконки (см. `public/icons/README` при необходимости) либо обновите assets вручную тем же названием.
 
 ### Vercel
 
