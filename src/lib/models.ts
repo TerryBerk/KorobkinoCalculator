@@ -1,4 +1,4 @@
-export type TariffLabel = "от 100 ед." | "от 500 ед." | "от 1000 ед.";
+export type TariffLabel = "до 100 ед." | "100-499 ед." | "500+ ед.";
 
 export type ServiceRow = {
   Код: string;
@@ -35,6 +35,26 @@ export type LogisticsInput = {
   kind: "Короб" | "Палет";
   count: number;
   pickupVolumeCbm?: number;
+  mode?: "auto" | "manual";
+  customPricePerShipment?: number;
+};
+
+export type LogisticsShipmentQuote = {
+  inputIndex: number;
+  input: LogisticsInput;
+  pricePerShipment: number;
+  discount: number;
+  count: number;
+  baseTotal: number;
+  discountedTotal: number;
+  pickupSurcharge: number;
+  total: number;
+  matchedRange?: string;
+};
+
+export type LogisticsQuote = {
+  shipments: LogisticsShipmentQuote[];
+  total: number;
 };
 
 export type QuoteLine = CartItem & {
@@ -47,12 +67,7 @@ export type QuoteLine = CartItem & {
 
 export type Quote = {
   items: QuoteLine[];
-  logistics?: {
-    pricePerShipment: number;
-    discount: number;
-    total: number;
-    matchedRange?: string;
-  };
+  logistics?: LogisticsQuote;
   grandTotal: number;
 };
 

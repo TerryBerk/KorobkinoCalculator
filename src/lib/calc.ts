@@ -1,7 +1,9 @@
 import type {
   CartItem,
   LogisticsInput,
+  LogisticsQuote,
   LogisticsRow,
+  LogisticsShipmentQuote,
   ParamsMap,
   Quote,
   ServiceRow,
@@ -33,26 +35,28 @@ function selectPrice(
 
   const t1 = getNumberParam(params, "Граница 1 (ед.)", DEFAULT_THRESHOLDS.first);
   const t2 = getNumberParam(params, "Граница 2 (ед.)", DEFAULT_THRESHOLDS.second);
-  const t3 = getNumberParam(params, "Граница 3 (ед.)", DEFAULT_THRESHOLDS.third);
+
+  const secondTierMin = Math.max(1, Math.floor(t1));
+  const thirdTierMin = Math.max(secondTierMin + 1, Math.floor(t2));
 
   const price1000 = service["от 1000 ед."];
   const price500 = service["от 500 ед."];
   const price100 = service["от 100 ед."];
 
-  if (qty >= t3 && price1000 != null) {
-    return { price: price1000, label: "от 1000 ед." };
+  if (qty >= thirdTierMin && price1000 != null) {
+    return { price: price1000, label: "500+ ед." };
   }
 
-  if (qty >= t2 && price500 != null) {
-    return { price: price500, label: "от 500 ед." };
+  if (qty >= secondTierMin && price500 != null) {
+    return { price: price500, label: "100-499 ед." };
   }
 
   if (price100 != null) {
-    return { price: price100, label: "от 100 ед." };
+    return { price: price100, label: "до 100 ед." };
   }
 
   // Fallback to the lowest non-null price
-  const fallbackPrice = [price500, price1000].find((value) => value != null) ?? 0;
+  const fallbackPrice = [price500, price1000, price100].find((value) => value != null) ?? 0;
   return { price: fallbackPrice };
 }
 
@@ -64,18 +68,18 @@ export function getMinimumBillableQty(service: ServiceRow, params?: ParamsMap): 
 
   const t1 = getNumberParam(params, "Граница 1 (ед.)", DEFAULT_THRESHOLDS.first);
   const t2 = getNumberParam(params, "Граница 2 (ед.)", DEFAULT_THRESHOLDS.second);
-  const t3 = getNumberParam(params, "Граница 3 (ед.)", DEFAULT_THRESHOLDS.third);
 
-  const thresholds = [
-    { qty: t1, price: service["от 100 ед."] },
-    { qty: t2, price: service["от 500 ед."] },
-    { qty: t3, price: service["от 1000 ед."] }
-  ];
+  const secondTierMin = Math.max(1, Math.floor(t1));
+  const thirdTierMin = Math.max(secondTierMin + 1, Math.floor(t2));
 
-  for (const tier of thresholds) {
-    if (tier.price != null) {
-      return Math.max(1, Math.floor(tier.qty));
-    }
+  if (service["от 100 ед."] != null) {
+    return 1;
+  }
+  if (service["от 500 ед."] != null) {
+    return secondTierMin;
+  }
+  if (service["от 1000 ед."] != null) {
+    return thirdTierMin;
   }
 
   return 1;
@@ -142,11 +146,26 @@ export function matchLogisticsPrice(
       row.Тип === input.kind
   );
 
+  let fallback: { pricePerShipment: number; matchedRange?: string; min: number } | undefined;
+
   for (const row of candidates) {
     const { min, max } = parseRange(row["Диапазон коробов"]);
     if (input.count >= min && (max == null || input.count <= max)) {
       return { pricePerShipment: row["Цена, ₽"], matchedRange: row["Диапазон коробов"] };
     }
+    if (input.count >= min) {
+      if (!fallback || min > fallback.min) {
+        fallback = {
+          pricePerShipment: row["Цена, ₽"],
+          matchedRange: row["Диапазон коробов"],
+          min
+        };
+      }
+    }
+  }
+
+  if (fallback) {
+    return { pricePerShipment: fallback.pricePerShipment, matchedRange: fallback.matchedRange };
   }
 
   return { pricePerShipment: 0 };
@@ -170,11 +189,94 @@ function calcPickupSurcharge(input: LogisticsInput, params: ParamsMap | undefine
   return extraVolume * extraPrice;
 }
 
+export function calcLogisticsShipmentQuote(
+  logisticsRows: LogisticsRow[],
+  logisticsInput: LogisticsInput,
+  params: ParamsMap,
+  inputIndex: number
+): LogisticsShipmentQuote | undefined {
+  const mode = logisticsInput.mode ?? "auto";
+
+  if (
+    !logisticsInput.marketplace ||
+    (mode === "auto" && !logisticsInput.location) ||
+    !logisticsInput.kind ||
+    !Number.isFinite(logisticsInput.count) ||
+    logisticsInput.count <= 0
+  ) {
+    return undefined;
+  }
+
+  let pricePerShipment: number;
+  let matchedRange: string | undefined;
+
+  if (mode === "manual") {
+    pricePerShipment = Math.max(
+      0,
+      Number.isFinite(logisticsInput.customPricePerShipment)
+        ? Number(logisticsInput.customPricePerShipment)
+        : 0
+    );
+    matchedRange = undefined;
+  } else {
+    const matched = matchLogisticsPrice(logisticsRows, logisticsInput);
+    pricePerShipment = matched.pricePerShipment;
+    matchedRange = matched.matchedRange;
+  }
+
+  const discount =
+    mode === "auto" && logisticsInput.kind === "Палет"
+      ? palletDiscount(logisticsInput.count, params)
+      : 0;
+  const pickupSurcharge = calcPickupSurcharge(logisticsInput, params);
+  const baseTotal = pricePerShipment * logisticsInput.count;
+  const discountedTotal = baseTotal * (1 - discount);
+  const total = discountedTotal + pickupSurcharge;
+
+  return {
+    inputIndex,
+    input: logisticsInput,
+    pricePerShipment,
+    discount,
+    matchedRange,
+    pickupSurcharge,
+    baseTotal,
+    discountedTotal,
+    total,
+    count: logisticsInput.count
+  };
+}
+
+function buildLogisticsQuote(
+  logisticsRows: LogisticsRow[],
+  logisticsInputs: LogisticsInput[] | undefined,
+  params: ParamsMap
+): LogisticsQuote | undefined {
+  if (!logisticsInputs || logisticsInputs.length === 0) {
+    return undefined;
+  }
+
+  const shipments = logisticsInputs
+    .map((input, index) => calcLogisticsShipmentQuote(logisticsRows, input, params, index))
+    .filter((shipment): shipment is LogisticsShipmentQuote => Boolean(shipment));
+
+  if (shipments.length === 0) {
+    return undefined;
+  }
+
+  const total = shipments.reduce((sum, shipment) => sum + shipment.total, 0);
+
+  return {
+    shipments,
+    total
+  };
+}
+
 export function buildQuote(
   services: ServiceRow[],
   cart: CartItem[],
   logisticsRows: LogisticsRow[],
-  logisticsInput?: LogisticsInput,
+  logisticsInputs?: LogisticsInput[],
   params: ParamsMap = {}
 ): Quote {
   const items = cart
@@ -201,24 +303,7 @@ export function buildQuote(
 
   const servicesTotal = items.reduce((sum, line) => sum + line.lineTotal, 0);
 
-  let logisticsQuote: Quote["logistics"] | undefined;
-
-  if (logisticsInput) {
-    const { pricePerShipment, matchedRange } = matchLogisticsPrice(logisticsRows, logisticsInput);
-    const discount =
-      logisticsInput.kind === "Палет" ? palletDiscount(logisticsInput.count, params) : 0;
-    const pickupExtra = calcPickupSurcharge(logisticsInput, params);
-    const baseTotal = pricePerShipment * logisticsInput.count;
-    const discounted = baseTotal * (1 - discount);
-    const total = discounted + pickupExtra;
-    logisticsQuote = {
-      pricePerShipment,
-      discount,
-      total,
-      matchedRange
-    };
-  }
-
+  const logisticsQuote = buildLogisticsQuote(logisticsRows, logisticsInputs, params);
   const logisticsTotal = logisticsQuote?.total ?? 0;
   const grandTotal = servicesTotal + logisticsTotal;
 
