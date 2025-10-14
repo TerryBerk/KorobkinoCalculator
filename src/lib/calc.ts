@@ -56,6 +56,31 @@ function selectPrice(
   return { price: fallbackPrice };
 }
 
+export function getMinimumBillableQty(service: ServiceRow, params?: ParamsMap): number {
+  const fixed = service["Фикс. цена"];
+  if (typeof fixed === "number" && fixed > 0) {
+    return 1;
+  }
+
+  const t1 = getNumberParam(params, "Граница 1 (ед.)", DEFAULT_THRESHOLDS.first);
+  const t2 = getNumberParam(params, "Граница 2 (ед.)", DEFAULT_THRESHOLDS.second);
+  const t3 = getNumberParam(params, "Граница 3 (ед.)", DEFAULT_THRESHOLDS.third);
+
+  const thresholds = [
+    { qty: t1, price: service["от 100 ед."] },
+    { qty: t2, price: service["от 500 ед."] },
+    { qty: t3, price: service["от 1000 ед."] }
+  ];
+
+  for (const tier of thresholds) {
+    if (tier.price != null) {
+      return Math.max(1, Math.floor(tier.qty));
+    }
+  }
+
+  return 1;
+}
+
 export function pickUnitPriceByQty(
   service: ServiceRow,
   qty: number,
@@ -156,14 +181,20 @@ export function buildQuote(
     .map((item) => {
       const service = services.find((row) => row.Код === item.code);
       if (!service) return null;
-      const { unitPrice, tariffLabel } = pickUnitPriceByQty(service, item.qty, params);
-      const lineTotal = calcLineTotal(service, item.qty, params);
+      const minQty = getMinimumBillableQty(service, params);
+      const effectiveQty = Math.max(minQty, Math.floor(item.qty));
+      const { unitPrice, tariffLabel } = pickUnitPriceByQty(service, effectiveQty, params);
+      const lineTotal = calcLineTotal(service, effectiveQty, params);
+      const note = service.Примечание?.trim();
       return {
         ...item,
+        qty: effectiveQty,
         unit: item.unit ?? service["Ед. изм."],
         unitPrice,
         tariffLabel,
-        lineTotal
+        lineTotal,
+        minQty,
+        note: note && note.length > 0 ? note : undefined
       };
     })
     .filter((value): value is NonNullable<typeof value> => Boolean(value));

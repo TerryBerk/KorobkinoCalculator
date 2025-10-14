@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { LogisticsForm } from "./components/LogisticsForm";
 import { ServicesTab } from "./components/ServiceRow";
 import { Summary } from "./components/Summary";
-import { buildQuote } from "./lib/calc";
+import { buildQuote, getMinimumBillableQty } from "./lib/calc";
 import {
   type CartItem,
   type LogisticsInput,
@@ -26,14 +26,14 @@ import "./styles.css";
 type Status = "idle" | "loading" | "success" | "error";
 
 const defaultTheme: ThemeTokens = {
-  background: "#020617",
-  surface: "#0f172a",
-  border: "#1e293b",
-  primary: "#10b981",
-  primaryText: "#ecfdf5",
-  text: "#f8fafc",
-  mutedText: "#94a3b8",
-  accent: "#22d3ee"
+  background: "#050b13",
+  surface: "rgba(9, 18, 31, 0.82)",
+  border: "rgba(255, 255, 255, 0.08)",
+  primary: "#ff7a00",
+  primaryText: "#05070c",
+  text: "#f5f9ff",
+  mutedText: "#8ea2bf",
+  accent: "#5de4c7"
 };
 
 type ShareState = {
@@ -208,12 +208,27 @@ export function KorobkinoCalculator({
     setCart((prev) =>
       prev.map((item) => {
         const service = services.find((row) => row.Код === item.code);
-        return service
-          ? { ...item, name: service.Наименование, unit: service["Ед. изм."] }
-          : item;
+        if (!service) {
+          return item;
+        }
+        const minQty = getMinimumBillableQty(service, params);
+        const clampedQty = Math.max(minQty, Math.floor(item.qty));
+        if (
+          item.name === service.Наименование &&
+          item.unit === service["Ед. изм."] &&
+          item.qty === clampedQty
+        ) {
+          return item;
+        }
+        return {
+          ...item,
+          name: service.Наименование,
+          unit: service["Ед. изм."],
+          qty: clampedQty
+        };
       })
     );
-  }, [services]);
+  }, [services, params]);
 
   const activeLogisticsInput = useMemo(() => {
     if (!logisticsInput.marketplace || !logisticsInput.location || logisticsInput.count <= 0) {
@@ -241,27 +256,48 @@ export function KorobkinoCalculator({
         if (prev.some((item) => item.code === service.Код)) {
           return prev;
         }
+        const minQty = getMinimumBillableQty(service, params);
         return [
           ...prev,
           {
             code: service.Код,
             name: service.Наименование,
-            qty: 1,
+            qty: Math.max(1, minQty),
             unit: service["Ед. изм."]
           }
         ];
       });
     },
-    [setCart]
+    [setCart, params]
   );
 
-  const handleQtyChange = useCallback((code: string, qty: number) => {
-    setCart((prev) =>
-      prev
-        .map((item) => (item.code === code ? { ...item, qty: Math.max(0, qty) } : item))
-        .filter((item) => item.qty > 0)
-    );
-  }, []);
+  const handleQtyChange = useCallback(
+    (code: string, qty: number | undefined) => {
+      setCart((prev) =>
+        prev.map((item) => {
+          if (item.code !== code) {
+            return item;
+          }
+          const service = services.find((row) => row.Код === code);
+          if (!service) {
+            const parsedFallback =
+              typeof qty === "number" && Number.isFinite(qty) ? Math.max(0, Math.floor(qty)) : 0;
+            return { ...item, qty: parsedFallback };
+          }
+          const minQty = getMinimumBillableQty(service, params);
+          const baseMin = Math.max(1, minQty);
+          const parsed =
+            typeof qty === "number" && Number.isFinite(qty) ? Math.floor(qty) : baseMin;
+          const nextQty = Math.max(baseMin, parsed);
+          if (nextQty === item.qty) {
+            return item;
+          }
+          return { ...item, qty: nextQty };
+        })
+      );
+    },
+    [services, params]
+  );
 
   const handleRemove = useCallback((code: string) => {
     setCart((prev) => prev.filter((item) => item.code !== code));
@@ -298,8 +334,10 @@ export function KorobkinoCalculator({
         String(quote.logistics.total)
       ]);
     }
-    const csv = [header, ...rows].map((line) => line.map(quoteCsvCell).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const csv = [header, ...rows]
+      .map((line) => line.map(quoteCsvCell).join(","))
+      .join("\r\n");
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8;" });
     const filename = `korobkino-quote-${new Date().toISOString().slice(0, 10)}.csv`;
     if (typeof window !== "undefined") {
       const link = document.createElement("a");
@@ -383,37 +421,48 @@ export function KorobkinoCalculator({
 
   return (
     <div
-      className="w-full rounded-3xl border p-6 shadow-xl sm:p-8"
+      className="w-full rounded-[28px] border px-6 py-7 shadow-[0_40px_120px_rgba(5,13,24,0.55)] backdrop-blur-xl sm:px-10 sm:py-10"
       style={{
-        backgroundColor: mergedTheme.surface,
+        background: `linear-gradient(155deg, rgba(13,24,41,0.92) 0%, rgba(8,16,27,0.88) 52%, rgba(5,11,19,0.92) 100%)`,
         color: mergedTheme.text,
-        borderColor: mergedTheme.border
+        borderColor: mergedTheme.border,
+        boxShadow: "0 60px 120px rgba(3, 8, 16, 0.45)"
       }}
     >
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-white">Korobkino Calculator</h1>
-          <p className="text-xs uppercase tracking-widest text-slate-400">
-            Расчет сметы по прайсу
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.25em] text-white/70">
+            <img
+              src="/icons/favicon.svg"
+              alt="Korobkino"
+              className="h-4 w-4"
+            />
+            Korobkino
+          </span>
+          <h1 className="text-2xl font-semibold text-white sm:text-3xl">
+            Korobkino Calculator
+          </h1>
+          <p className="text-sm text-white/60">
+            Детерминированный расчёт сметы по прайс-листу и логистике.
           </p>
         </div>
         {cacheOnly && (
-          <span className="rounded-full border border-amber-500/60 bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-300">
+          <span className="rounded-full border border-amber-400/40 bg-amber-400/15 px-3 py-1 text-xs font-medium text-amber-200 shadow-[0_10px_30px_rgba(255,163,67,0.2)]">
             Показаны кешированные данные
           </span>
         )}
       </header>
 
-      <Tab.Group as="div" className="mt-6">
-        <Tab.List className="flex gap-2 rounded-xl bg-slate-900/60 p-1">
+      <Tab.Group as="div" className="mt-8">
+        <Tab.List className="flex gap-2 rounded-2xl border border-white/10 bg-white/5 p-2 backdrop-blur">
           {["Услуги", "Логистика", "Итог"].map((label) => (
             <Tab
               key={label}
               className={({ selected }) =>
-                `flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                `flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition ${
                   selected
-                    ? "bg-emerald-500/20 text-emerald-200"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? "bg-[#ff7a00] text-[#05070c] shadow-[0_12px_35px_rgba(255,122,0,0.35)]"
+                    : "text-white/60 hover:text-white"
                 }`
               }
             >
@@ -422,7 +471,7 @@ export function KorobkinoCalculator({
           ))}
         </Tab.List>
 
-        <Tab.Panels className="mt-6">
+        <Tab.Panels className="mt-8 space-y-6">
           <Tab.Panel>
             <ServicesTab
               services={services}

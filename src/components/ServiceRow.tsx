@@ -1,5 +1,5 @@
 import { Combobox } from "@headlessui/react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { CartItem, QuoteLine, ServiceRow } from "../lib/models";
 
 type ServicesTabProps = {
@@ -16,29 +16,47 @@ type Option = {
   id: string;
   label: string;
   service: ServiceRow;
+  tariffType: string;
+};
+
+const getTariffType = (service: ServiceRow): string => {
+  const fixedPrice = service["Фикс. цена"];
+  if (fixedPrice != null) {
+    return fixedPrice === 0 ? "Бесплатно" : "Фикс";
+  }
+  if (service["от 100 ед."] != null) return "от 100";
+  if (service["от 500 ед."] != null) return "от 500";
+  if (service["от 1000 ед."] != null) return "от 1000";
+  return "—";
 };
 
 const columns = [
   "Код",
   "Наименование",
   "Кол-во",
+  "Ед.",
   "Тариф",
   "Цена",
-  "Ед.",
   "Сумма",
+  "Примечание",
   ""
 ] as const;
 
 export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, onAdd, onQtyChange, onRemove }: ServicesTabProps) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Option | null>(null);
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
 
   const options = useMemo<Option[]>(() => {
-    return services.map((service) => ({
-      id: service.Код,
-      label: `${service.Код} — ${service.Наименование}`,
-      service
-    }));
+    return services.map((service) => {
+      const tariffType = getTariffType(service);
+      return {
+        id: service.Код,
+        label: `${service.Код} — ${service.Наименование}`,
+        service,
+        tariffType
+      };
+    });
   }, [services]);
 
   const filtered =
@@ -62,91 +80,135 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
   return (
     <div className="space-y-4">
       <div>
-        <Combobox value={selected} onChange={handleAdd}>
-          <div className="relative">
-            <Combobox.Input
-              className="w-full rounded-lg border border-slate-600 bg-slate-900/50 px-4 py-2 text-sm text-white placeholder-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-              displayValue={(option: Option | null) => option?.label ?? ""}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Найти услугу по коду или названию..."
-            />
-            {filtered.length > 0 && (
-              <Combobox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-slate-700 bg-slate-900/95 py-1 text-sm shadow-xl">
-                {filtered.map((option) => (
-                  <Combobox.Option
-                    key={option.id}
-                    value={option}
-                    className={({ active }) =>
-                      `cursor-pointer px-3 py-2 ${
-                        active ? "bg-emerald-500/20 text-white" : "text-slate-200"
-                      }`
-                    }
-                  >
-                    <span className="font-medium text-emerald-300">{option.service.Код}</span>
-                    <span className="ml-2 text-slate-300">{option.service.Наименование}</span>
-                  </Combobox.Option>
-                ))}
-              </Combobox.Options>
-            )}
-          </div>
+        <Combobox value={selected} onChange={handleAdd} nullable>
+          {({ open }) => (
+            <div className="relative">
+              <Combobox.Input
+                className="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm text-white placeholder-white/40 backdrop-blur focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40"
+                displayValue={(option: Option | null) => option?.label ?? ""}
+                onChange={(event) => setQuery(event.target.value)}
+                onFocus={() => {
+                  if (!open) toggleRef.current?.click();
+                }}
+                onClick={() => {
+                  if (!open) toggleRef.current?.click();
+                }}
+                placeholder="Найти услугу по коду или названию..."
+              />
+              <Combobox.Button
+                className="absolute inset-y-0 right-3 flex items-center text-white/50 transition hover:text-white/70"
+                ref={toggleRef}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    fillRule="evenodd"
+                    d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 011.08 1.04l-4.25 4.25a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </Combobox.Button>
+              {open && (
+                <Combobox.Options className="absolute z-20 mt-2 max-h-60 w-full overflow-auto rounded-2xl border border-white/10 bg-[#08111e]/95 py-2 text-sm shadow-[0_24px_60px_rgba(2,8,16,0.65)] backdrop-blur">
+                  {filtered.length === 0 ? (
+                    <div className="px-4 py-6 text-center text-sm text-white/50">
+                      Ничего не найдено
+                    </div>
+                  ) : (
+                    filtered.map((option) => (
+                      <Combobox.Option
+                        key={option.id}
+                        value={option}
+                        className={({ active }) =>
+                          `cursor-pointer px-3 py-2 transition ${
+                            active
+                              ? "bg-[#ff7a00]/20 text-white"
+                              : "text-white/80 hover:bg-white/5"
+                          }`
+                        }
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="shrink-0 font-semibold text-[#ff9a33]">
+                              {option.service.Код}
+                            </span>
+                            <span className="truncate text-white/80">{option.service.Наименование}</span>
+                          </div>
+                          {option.tariffType !== "—" && (
+                            <span className="shrink-0 rounded-full border border-white/10 bg-white/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-white/60">
+                              {option.tariffType}
+                            </span>
+                          )}
+                        </div>
+                      </Combobox.Option>
+                    ))
+                  )}
+                </Combobox.Options>
+              )}
+            </div>
+          )}
         </Combobox>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-700 bg-slate-900/70">
-        <table className="min-w-full divide-y divide-slate-700">
+      <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04] shadow-inner shadow-white/5">
+        <table className="min-w-full divide-y divide-white/8">
           <thead>
             <tr>
               {columns.map((column) => (
                 <th
                   key={column}
                   scope="col"
-                  className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400"
+                  className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50"
                 >
                   {column}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-white/5">
             {quoteLines.length === 0 && (
               <tr>
-                <td colSpan={columns.length} className="px-6 py-10 text-center text-sm text-slate-400">
+                <td colSpan={columns.length} className="px-6 py-10 text-center text-sm text-white/40">
                   Добавьте услуги, чтобы рассчитать смету
                 </td>
               </tr>
             )}
             {quoteLines.map((line) => (
-              <tr key={line.code} className="text-sm text-slate-200">
-                <td className="whitespace-nowrap px-3 py-3 font-medium text-emerald-300">
+              <tr key={line.code} className="text-sm text-white/80 hover:bg-white/5">
+                <td className="whitespace-nowrap px-3 py-3 font-semibold text-[#ff9a33]">
                   {line.code}
                 </td>
                 <td className="px-3 py-3">
-                  <div className="font-medium text-slate-100">{line.name}</div>
+                  <div className="font-medium text-white">{line.name}</div>
                   {line.tariffLabel && (
-                    <p className="text-xs text-slate-400">{line.tariffLabel}</p>
+                    <p className="text-xs text-white/50">{line.tariffLabel}</p>
                   )}
                 </td>
                 <td className="px-3 py-3">
                   <input
                     type="number"
-                    min={0}
-                    className="w-24 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-right text-slate-100 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                    className="w-24 appearance-none rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-right text-white focus:border-[#ff7a00]/50 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/30"
+                    step={1}
+                    min={line.minQty ?? 1}
+                    title={line.minQty && line.minQty > 1 ? `Минимум ${line.minQty}` : undefined}
                     value={cartItems.find((item) => item.code === line.code)?.qty ?? line.qty}
-                    onChange={(event) => onQtyChange(line.code, Number(event.target.value) || 0)}
+                    onChange={(event) => onQtyChange(line.code, Number(event.target.value))}
                   />
                 </td>
-                <td className="px-3 py-3 text-slate-300">{line.tariffLabel ?? "Фикс"}</td>
-                <td className="px-3 py-3 font-mono text-right text-slate-100">
+                <td className="px-3 py-3 text-white/70">{line.unit ?? "ед."}</td>
+                <td className="px-3 py-3 text-white/70">{line.tariffLabel ?? "Фикс"}</td>
+                <td className="px-3 py-3 font-mono text-right text-white">
                   {formatCurrency(line.unitPrice)}
                 </td>
-                <td className="px-3 py-3 text-slate-300">{line.unit ?? "ед."}</td>
                 <td className="px-3 py-3 font-mono text-right font-semibold text-white">
                   {formatCurrency(line.lineTotal)}
+                </td>
+                <td className="px-3 py-3 text-xs text-white/60">
+                  {line.note?.trim() ? line.note : "—"}
                 </td>
                 <td className="px-3 py-3 text-right">
                   <button
                     type="button"
-                    className="rounded-md border border-transparent px-2 py-1 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 focus:outline-none focus:ring-2 focus:ring-rose-500/40"
+                    className="rounded-lg border border-transparent px-3 py-1 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/20 focus:outline-none focus:ring-2 focus:ring-rose-400/40"
                     onClick={() => onRemove(line.code)}
                   >
                     Удалить

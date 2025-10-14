@@ -5,3 +5,24 @@
 :root {
   color-scheme: light dark;
 }
+
+@layer base {
+  body {
+    @apply bg-[#050b13] text-slate-100;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(255, 122, 0, 0.12), transparent 45%),
+      radial-gradient(circle at 80% 0%, rgba(93, 228, 199, 0.14), transparent 40%),
+      linear-gradient(160deg, #03070d 0%, #0b1422 60%, #050b13 100%);
+    min-height: 100vh;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}

@@ -45,12 +45,12 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="flex flex-col gap-2 text-sm text-slate-300">
-          <span className="font-medium text-slate-200">Маркетплейс</span>
+        <label className="flex flex-col gap-2 text-sm text-white/70">
+          <span className="font-medium text-white/80">Маркетплейс</span>
           <select
-            className="rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40"
             value={value.marketplace}
             onChange={(event) => handleFieldChange("marketplace", event.target.value)}
           >
@@ -63,10 +63,10 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
           </select>
         </label>
 
-        <label className="flex flex-col gap-2 text-sm text-slate-300">
-          <span className="font-medium text-slate-200">Локация</span>
+        <label className="flex flex-col gap-2 text-sm text-white/70">
+          <span className="font-medium text-white/80">Локация</span>
           <select
-            className="rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40"
             value={value.location}
             onChange={(event) => handleFieldChange("location", event.target.value)}
             disabled={!value.marketplace}
@@ -80,10 +80,10 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
           </select>
         </label>
 
-        <label className="flex flex-col gap-2 text-sm text-slate-300">
-          <span className="font-medium text-slate-200">Тип отправки</span>
+        <label className="flex flex-col gap-2 text-sm text-white/70">
+          <span className="font-medium text-white/80">Тип отправки</span>
           <select
-            className="rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40"
             value={value.kind}
             onChange={(event) => handleFieldChange("kind", event.target.value as LogisticsInput["kind"])}
             disabled={!value.location}
@@ -103,14 +103,14 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
           </select>
         </label>
 
-        <label className="flex flex-col gap-2 text-sm text-slate-300">
-          <span className="font-medium text-slate-200">
+        <label className="flex flex-col gap-2 text-sm text-white/70">
+          <span className="font-medium text-white/80">
             {value.kind === "Палет" ? "Количество палет" : "Количество коробов"}
           </span>
           <input
             type="number"
             min={0}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-right text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+            className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-right text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/35"
             value={Number.isFinite(value.count) ? value.count : 0}
             onChange={(event) =>
               handleFieldChange("count", Math.max(0, Number(event.target.value) || 0))
@@ -119,13 +119,13 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
         </label>
       </div>
 
-      <label className="flex flex-col gap-2 text-sm text-slate-300">
-        <span className="font-medium text-slate-200">Объем при заборе (м³)</span>
+      <label className="flex flex-col gap-2 text-sm text-white/70">
+        <span className="font-medium text-white/80">Объем при заборе (м³)</span>
         <input
           type="number"
           min={0}
           step="0.1"
-          className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-right text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-right text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/35"
           value={value.pickupVolumeCbm ?? 0}
           onChange={(event) =>
             handleFieldChange(
@@ -136,20 +136,20 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
         />
       </label>
 
-      <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-4 text-sm text-slate-300">
-        <p>
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-sm text-white/70 shadow-inner shadow-white/5">
+        <p className="text-white">
           Стоимость отправки:{" "}
-          <span className="font-semibold text-white">
+          <span className="font-semibold text-[#ff9a33]">
             {formatCurrency(quote?.pricePerShipment ?? 0)} × {value.count}
           </span>
         </p>
         {matchedRange && (
-          <p className="mt-1 text-xs text-slate-400">
-            Попали в диапазон <span className="font-medium text-slate-200">{matchedRange}</span>
+          <p className="mt-2 text-xs text-white/60">
+            Попали в диапазон <span className="font-medium text-white">{matchedRange}</span>
           </p>
         )}
         {quote && quote.discount > 0 && (
-          <p className="mt-1 text-xs text-emerald-300">
+          <p className="mt-2 text-xs text-[#5de4c7]">
             Применена скидка {Math.round(quote.discount * 100)}%
           </p>
         )}
