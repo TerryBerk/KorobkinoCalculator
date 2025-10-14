@@ -5,6 +5,7 @@ type SummaryProps = {
   quote: Quote;
   formatCurrency: (value: number) => string;
   onExportCsv: () => void;
+  onExportPdf: () => void;
   onCopyLink: () => Promise<void>;
   copyStatus: "idle" | "success" | "error";
   shareUrl: string;
@@ -18,6 +19,7 @@ export function Summary({
   quote,
   formatCurrency,
   onExportCsv,
+  onExportPdf,
   onCopyLink,
   copyStatus,
   shareUrl,
@@ -30,6 +32,7 @@ export function Summary({
   const logisticsTotal = quote.logistics?.total ?? 0;
   const logisticsShipments = quote.logistics?.shipments ?? [];
   const logisticsCount = logisticsShipments.reduce((sum, shipment) => sum + shipment.count, 0);
+  const hasSummaryData = quote.items.length > 0 || logisticsShipments.length > 0;
   const clampedDiscount = useMemo(
     () => Math.min(100, Math.max(0, personalDiscountPercent)),
     [personalDiscountPercent]
@@ -245,7 +248,19 @@ export function Summary({
         )}
       </section>
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <button
+          type="button"
+          onClick={onExportPdf}
+          disabled={!hasSummaryData}
+          className={`inline-flex items-center justify-center rounded-xl border border-white/15 px-5 py-3 text-sm font-semibold backdrop-blur transition focus:outline-none focus:ring-2 focus:ring-white/40 ${
+            hasSummaryData
+              ? "bg-[#ff7a00] text-[#05070c] shadow-[0_18px_40px_rgba(255,122,0,0.35)] hover:bg-[#ffa24c]"
+              : "cursor-not-allowed bg-white/[0.06] text-white/50 opacity-70"
+          }`}
+        >
+          Выгрузить в PDF
+        </button>
         <button
           type="button"
           onClick={onExportCsv}

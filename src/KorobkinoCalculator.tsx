@@ -520,6 +520,388 @@ export function KorobkinoCalculator({
     }
   }, [quote]);
 
+  const loadPdfFontData = useCallback(async () => {
+    if (typeof window === "undefined") return null;
+    try {
+      console.log("Attempting to load fonts...");
+      const [normalResponse, boldResponse] = await Promise.all([
+        fetch("/fonts/Roboto-Regular.ttf"),
+        fetch("/fonts/Roboto-Bold.ttf")
+      ]);
+      
+      console.log("Font responses:", { 
+        normal: normalResponse.ok, 
+        bold: boldResponse.ok,
+        normalStatus: normalResponse.status,
+        boldStatus: boldResponse.status
+      });
+      
+      if (normalResponse.ok && boldResponse.ok) {
+        const [normalBuffer, boldBuffer] = await Promise.all([
+          normalResponse.arrayBuffer(),
+          boldResponse.arrayBuffer()
+        ]);
+        
+        console.log("Font buffers loaded:", {
+          normalSize: normalBuffer.byteLength,
+          boldSize: boldBuffer.byteLength
+        });
+        
+        return {
+          normal: Array.from(new Uint8Array(normalBuffer)),
+          bold: Array.from(new Uint8Array(boldBuffer))
+        };
+      } else {
+        console.warn("Font loading failed:", {
+          normal: normalResponse.statusText,
+          bold: boldResponse.statusText
+        });
+      }
+    } catch (error) {
+      console.warn("Failed to load PDF fonts:", error);
+    }
+    return null;
+  }, []);
+
+  const loadLogoDataUrl = useCallback(async () => {
+    if (typeof window === "undefined") return null;
+    try {
+      const response = await fetch("/KorobkinoCalculator-logo.png");
+      if (response.ok) {
+        const blob = await response.blob();
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch (error) {
+      console.warn("Failed to load logo:", error);
+    }
+    return null;
+  }, []);
+
+  const handleExportPdf = useCallback(async () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const servicesTotal = quote.items.reduce((sum, line) => sum + line.lineTotal, 0);
+    const totalUnits = quote.items.reduce((sum, line) => sum + line.qty, 0);
+    const shipments = quote.logistics?.shipments ?? [];
+    const logisticsTotal = quote.logistics?.total ?? 0;
+    if (quote.items.length === 0 && shipments.length === 0) {
+      return;
+    }
+    const shipmentsCount = shipments.reduce((sum, shipment) => sum + shipment.count, 0);
+    const clampedDiscount = Math.min(100, Math.max(0, personalDiscountPercent));
+    const hasPersonalDiscount = personalDiscountEnabled && clampedDiscount > 0;
+    const discountedTotal = hasPersonalDiscount
+      ? Math.max(0, quote.grandTotal * (1 - clampedDiscount / 100))
+      : quote.grandTotal;
+
+    const { jsPDF } = await import("jspdf");
+    const autoTable = await import("jspdf-autotable");
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 20;
+    const maxWidth = pageWidth - 2 * margin;
+
+    // Load fonts and logo
+    const [fontData, logoDataUrl] = await Promise.all([
+      loadPdfFontData(),
+      loadLogoDataUrl()
+    ]);
+
+    // Use built-in fonts that support Cyrillic
+    // jsPDF has limited built-in font support for Cyrillic
+    // We'll use a combination of approaches
+    let fontFamily = "helvetica";
+    
+    // Try to load custom fonts, but don't fail if they don't work
+    if (fontData) {
+      try {
+        console.log("Adding fonts to PDF...");
+        // Convert array to binary string for jsPDF
+        // String.fromCharCode has limitations with large arrays, so we'll use a different approach
+        const normalFontString = fontData.normal.map(byte => String.fromCharCode(byte)).join('');
+        const boldFontString = fontData.bold.map(byte => String.fromCharCode(byte)).join('');
+        
+        console.log("Font string lengths:", {
+          normal: normalFontString.length,
+          bold: boldFontString.length
+        });
+        
+        doc.addFileToVFS("Roboto-Regular.ttf", normalFontString);
+        doc.addFileToVFS("Roboto-Bold.ttf", boldFontString);
+        doc.addFont("Roboto-Regular.ttf", "Roboto", "normal");
+        doc.addFont("Roboto-Bold.ttf", "Roboto", "bold");
+        fontFamily = "Roboto";
+        console.log("Fonts added successfully, using Roboto");
+      } catch (error) {
+        console.warn("Failed to add fonts to PDF:", error);
+        fontFamily = "helvetica";
+        console.log("Falling back to helvetica");
+      }
+    } else {
+      console.log("No font data available, using helvetica");
+    }
+
+    let cursorY = margin;
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // Function to check if we need a new page
+    const checkPageBreak = (requiredHeight: number) => {
+      if (cursorY + requiredHeight > pageHeight - margin) {
+        doc.addPage();
+        cursorY = margin;
+        return true;
+      }
+      return false;
+    };
+
+    // Header with logo
+    if (logoDataUrl) {
+      try {
+        doc.addImage(logoDataUrl, "PNG", pageWidth - margin - 30, cursorY, 30, 30);
+      } catch (error) {
+        console.warn("Failed to add logo to PDF:", error);
+      }
+    }
+
+    doc.setFont(fontFamily, "bold");
+    doc.setFontSize(20);
+    doc.text("Итоговая смета. Korobkino", margin, cursorY);
+
+    doc.setFont(fontFamily, "normal");
+    doc.setFontSize(10);
+    const dateFormatter = new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "ru-RU");
+    doc.text(`Дата: ${dateFormatter.format(new Date())}`, margin, cursorY + 18);
+    cursorY += 44;
+
+    doc.setFont(fontFamily, "bold");
+    doc.setFontSize(12);
+    doc.text("Сводные данные", margin, cursorY);
+    cursorY += 18;
+
+    doc.setFont(fontFamily, "normal");
+    doc.setFontSize(11);
+    doc.text(`Услуги: ${quote.items.length} позиций · ${totalUnits} ед. на сумму ${formatCurrency(servicesTotal)}`, margin, cursorY);
+    cursorY += 12;
+    doc.text(`Логистика: ${shipments.length} отправок · ${shipmentsCount} шт. на сумму ${formatCurrency(logisticsTotal)}`, margin, cursorY);
+    cursorY += 12;
+    doc.text(`Итого без скидки: ${formatCurrency(quote.grandTotal)}`, margin, cursorY);
+    cursorY += 24;
+
+    if (hasPersonalDiscount) {
+      cursorY += 16;
+      doc.setFont(fontFamily, "bold");
+      doc.setFontSize(13);
+      doc.text(`К оплате: ${formatCurrency(discountedTotal)}`, margin, cursorY);
+      cursorY += 24;
+      doc.setFont(fontFamily, "normal");
+      doc.setFontSize(11);
+    }
+
+    if (quote.items.length > 0) {
+      // Check if we need a new page for services table
+      const servicesTableHeight = 60 + (quote.items.length * 12); // Approximate height
+      checkPageBreak(servicesTableHeight);
+      
+      doc.setFont(fontFamily, "bold");
+      doc.setFontSize(13);
+      doc.text("Услуги", margin, cursorY);
+      cursorY += 14;
+
+      const tableData = quote.items.map((line) => [
+        line.code,
+        line.name,
+        String(line.qty),
+        line.unit ?? "",
+        line.tariffLabel ?? "Фикс",
+        formatCurrency(line.unitPrice),
+        formatCurrency(line.lineTotal)
+      ]);
+
+      // Calculate available width for table
+      const availableWidth = maxWidth;
+      const totalColumnWidth = 25 + 60 + 20 + 20 + 25 + 25 + 25; // 200
+      
+      // Adjust column widths if needed to fit within available space
+      const scaleFactor = Math.min(1, availableWidth / totalColumnWidth);
+      
+      autoTable.default(doc, {
+        startY: cursorY,
+        head: [["Код", "Наименование", "Кол-во", "Ед.", "Тариф", "Цена", "Сумма"]],
+        body: tableData,
+        theme: "grid",
+        headStyles: {
+          fillColor: [255, 122, 0],
+          textColor: [5, 7, 12],
+          fontStyle: "bold",
+          font: fontFamily,
+          fontSize: 10
+        },
+        bodyStyles: {
+          font: fontFamily,
+          fontSize: 9,
+          textColor: [0, 0, 0]
+        },
+        alternateRowStyles: {
+          fillColor: [248, 249, 250]
+        },
+        margin: { left: margin, right: margin },
+        tableWidth: availableWidth,
+        columnStyles: {
+          0: { cellWidth: Math.round(25 * scaleFactor) },
+          1: { cellWidth: Math.round(60 * scaleFactor) },
+          2: { cellWidth: Math.round(20 * scaleFactor) },
+          3: { cellWidth: Math.round(20 * scaleFactor) },
+          4: { cellWidth: Math.round(25 * scaleFactor) },
+          5: { cellWidth: Math.round(25 * scaleFactor) },
+          6: { cellWidth: Math.round(25 * scaleFactor) }
+        }
+      });
+
+      cursorY = (doc as any).lastAutoTable.finalY + 15;
+    }
+
+    if (shipments.length > 0) {
+      // Check if we need a new page for logistics table
+      const logisticsTableHeight = 60 + (shipments.length * 12); // Approximate height
+      checkPageBreak(logisticsTableHeight);
+      
+      doc.setFont(fontFamily, "bold");
+      doc.setFontSize(13);
+      doc.text("Логистика", margin, cursorY);
+      cursorY += 14;
+
+      const logisticsTableData = shipments.map((shipment, index) => [
+        `#${index + 1}`,
+        [
+          "Логистика",
+          shipment.input.marketplace,
+          shipment.input.location,
+          shipment.input.kind
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        String(shipment.count),
+        formatCurrency(shipment.pricePerShipment),
+        shipment.discount > 0
+          ? `Скидка ${Math.round(shipment.discount * 100)}%${
+              shipment.matchedRange ? ` · Диапазон ${shipment.matchedRange}` : ""
+            }`
+          : shipment.matchedRange
+            ? `Диапазон ${shipment.matchedRange}`
+            : "-",
+        formatCurrency(shipment.total)
+      ]);
+
+      // Add total row
+      logisticsTableData.push([
+        "Итого",
+        "",
+        String(shipmentsCount),
+        "",
+        "",
+        formatCurrency(logisticsTotal)
+      ]);
+
+      // Calculate available width for logistics table
+      const logisticsAvailableWidth = maxWidth;
+      const logisticsTotalColumnWidth = 15 + 70 + 20 + 30 + 35 + 25; // 195
+      const logisticsScaleFactor = Math.min(1, logisticsAvailableWidth / logisticsTotalColumnWidth);
+      
+      autoTable.default(doc, {
+        startY: cursorY,
+        head: [["#", "Описание", "Кол-во", "Цена за отправку", "Скидка / диапазон", "Сумма"]],
+        body: logisticsTableData,
+        theme: "grid",
+        headStyles: {
+          fillColor: [255, 122, 0],
+          textColor: [5, 7, 12],
+          fontStyle: "bold",
+          font: fontFamily,
+          fontSize: 10
+        },
+        bodyStyles: {
+          font: fontFamily,
+          fontSize: 9,
+          textColor: [0, 0, 0]
+        },
+        alternateRowStyles: {
+          fillColor: [248, 249, 250]
+        },
+        margin: { left: margin, right: margin },
+        tableWidth: logisticsAvailableWidth,
+        columnStyles: {
+          0: { cellWidth: Math.round(15 * logisticsScaleFactor) },
+          1: { cellWidth: Math.round(70 * logisticsScaleFactor) },
+          2: { cellWidth: Math.round(20 * logisticsScaleFactor) },
+          3: { cellWidth: Math.round(30 * logisticsScaleFactor) },
+          4: { cellWidth: Math.round(35 * logisticsScaleFactor) },
+          5: { cellWidth: Math.round(25 * logisticsScaleFactor) }
+        }
+      });
+
+      cursorY = (doc as any).lastAutoTable.finalY + 15;
+    }
+
+    // Contact information - check if we need a new page
+    const contactSectionHeight = 80; // Approximate height needed for contact section
+    
+    // Check if there's enough space for contact information
+    if (cursorY + contactSectionHeight > pageHeight - margin) {
+      doc.addPage();
+      cursorY = margin;
+    }
+
+    const addressLabel = "Адрес:";
+    doc.setFont(fontFamily, "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    doc.text(addressLabel, margin, cursorY);
+    const labelWidth = doc.getTextWidth(addressLabel + " ");
+    doc.setFont(fontFamily, "normal");
+    doc.setFontSize(11);
+    doc.text("г. Подольск, ул. Комсомольская, д.1к21, 8-ые ворота", margin + labelWidth, cursorY, {
+      maxWidth: maxWidth
+    });
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.6);
+    doc.line(margin, cursorY - 4, margin + labelWidth, cursorY - 4);
+
+    // cursorY += 8;
+
+    cursorY += 12;
+
+    const telLabel = "Tel:";
+    doc.setFont(fontFamily, "bold");
+    doc.text(telLabel, margin, cursorY);
+    const telLabelWidth = doc.getTextWidth(telLabel + " ");
+    doc.setFont(fontFamily, "normal");
+    doc.text("8 (925) 340-06-32", margin + telLabelWidth, cursorY);
+    cursorY += 12;
+
+    const tgLabel = "TG:";
+    doc.setFont(fontFamily, "bold");
+    doc.text(tgLabel, margin, cursorY);
+    const tgLabelWidth = doc.getTextWidth(tgLabel + " ");
+    doc.setFont(fontFamily, "normal");
+    doc.text("@korobkinoff", margin + tgLabelWidth, cursorY);
+
+    const filename = `korobkino-quote-${new Date().toISOString().slice(0, 10)}.pdf`;
+    doc.save(filename);
+  }, [
+    formatCurrency,
+    loadLogoDataUrl,
+    loadPdfFontData,
+    locale,
+    personalDiscountEnabled,
+    personalDiscountPercent,
+    quote
+  ]);
+
   const shareUrl = useMemo(() => encodeShareUrl(cart, logisticsInputs), [cart, logisticsInputs]);
 
   const handleCopyLink = useCallback(async () => {
@@ -621,6 +1003,37 @@ export function KorobkinoCalculator({
     window.addEventListener("keydown", handleTabSwitch);
     return () => window.removeEventListener("keydown", handleTabSwitch);
   }, [isResetConfirmOpen]);
+
+  // Hotkeys: N for new calculator, C for close (reset)
+  useEffect(() => {
+    const handleHotkeys = (event: KeyboardEvent) => {
+      // Don't trigger if in a dialog or input field
+      if (isResetConfirmOpen) return;
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const tagName = target.tagName;
+      if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT" || target.isContentEditable) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      
+      // [N] - Open new calculator
+      if (key === "n") {
+        event.preventDefault();
+        handleOpenNewCalculator();
+      }
+      
+      // [C] - Close/Reset calculator
+      if (key === "c") {
+        event.preventDefault();
+        handleOpenResetConfirm();
+      }
+    };
+
+    window.addEventListener("keydown", handleHotkeys);
+    return () => window.removeEventListener("keydown", handleHotkeys);
+  }, [isResetConfirmOpen, handleOpenNewCalculator, handleOpenResetConfirm]);
 
   if (status === "loading" && services.length === 0) {
     return (
@@ -727,6 +1140,7 @@ export function KorobkinoCalculator({
                 quote={quote}
                 formatCurrency={formatCurrency}
                 onExportCsv={handleExportCsv}
+                onExportPdf={handleExportPdf}
                 onCopyLink={handleCopyLink}
                 copyStatus={copyStatus}
                 shareUrl={shareUrl}
@@ -837,9 +1251,67 @@ export function KorobkinoCalculator({
             />
             Korobkino
           </span>
-          <h1 className="text-2xl font-semibold text-white sm:text-3xl">
-            Korobkino Calculator
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold text-white sm:text-3xl">
+              Korobkino Calculator
+            </h1>
+            <div className="relative group">
+              <button
+                type="button"
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/60 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/20"
+                aria-label="Справка по горячим клавишам"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-4 w-4"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
+              </button>
+              {/* Hotkey Guide Tooltip */}
+              <div className="invisible absolute left-0 top-full mt-2 w-72 rounded-2xl border border-white/10 bg-[radial-gradient(120%_160%_at_50%_0%,rgba(27,42,63,0.98)_0%,rgba(9,18,31,1)_100%)] p-4 shadow-[0_20px_60px_rgba(5,13,24,0.75)] opacity-0 transition-all duration-200 group-hover:visible group-hover:opacity-100 z-50 backdrop-blur-xl">
+                <h3 className="mb-3 text-sm font-semibold text-white">
+                  Горячие клавиши
+                </h3>
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/60">Новый калькулятор</span>
+                    <kbd className="rounded border border-white/20 bg-white/10 px-2 py-1 font-mono text-white">
+                      N
+                    </kbd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/60">Сбросить калькулятор</span>
+                    <kbd className="rounded border border-white/20 bg-white/10 px-2 py-1 font-mono text-white">
+                      C
+                    </kbd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/60">Переключить вкладку</span>
+                    <kbd className="rounded border border-white/20 bg-white/10 px-2 py-1 font-mono text-white">
+                      Tab
+                    </kbd>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/60">Вкладка назад</span>
+                    <kbd className="rounded border border-white/20 bg-white/10 px-2 py-1 font-mono text-white">
+                      Shift+Tab
+                    </kbd>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           <p className="text-sm text-white/60">
             Детерминированный расчёт сметы по прайс-листу и логистике.
           </p>
@@ -904,6 +1376,7 @@ export function KorobkinoCalculator({
               onAdd={handleAddService}
               onQtyChange={handleQtyChange}
               onRemove={handleRemove}
+              shouldFocusSearch={activeTabIndex === 0}
             />
           </Tab.Panel>
           <Tab.Panel>
@@ -920,6 +1393,7 @@ export function KorobkinoCalculator({
               quote={quote}
               formatCurrency={formatCurrency}
               onExportCsv={handleExportCsv}
+              onExportPdf={handleExportPdf}
               onCopyLink={handleCopyLink}
               copyStatus={copyStatus}
               shareUrl={shareUrl}

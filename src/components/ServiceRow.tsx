@@ -1,5 +1,5 @@
 import { Combobox } from "@headlessui/react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CartItem, QuoteLine, ServiceRow } from "../lib/models";
 
 type ServicesTabProps = {
@@ -11,6 +11,7 @@ type ServicesTabProps = {
   onQtyChange: (code: string, qty: number) => void;
   onRemove: (code: string) => void;
   isMobileView?: boolean;
+  shouldFocusSearch?: boolean;
 };
 
 type Option = {
@@ -50,11 +51,24 @@ const columns = [
   ""
 ] as const;
 
-export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, onAdd, onQtyChange, onRemove, isMobileView = false }: ServicesTabProps) {
+export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, onAdd, onQtyChange, onRemove, isMobileView = false, shouldFocusSearch = false }: ServicesTabProps) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Option | null>(null);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [sortState, setSortState] = useState<SortState>({ column: null, direction: null });
+
+  // Auto-focus search input on desktop when shouldFocusSearch is true
+  useEffect(() => {
+    if (shouldFocusSearch && !isMobileView && searchInputRef.current) {
+      // Small delay to ensure the component is fully rendered
+      const timeoutId = setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 100);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [shouldFocusSearch, isMobileView]);
 
   const servicesTotal = useMemo(
     () => quoteLines.reduce((sum, line) => sum + line.lineTotal, 0),
@@ -139,6 +153,7 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
           {({ open }) => (
             <div className="relative">
               <Combobox.Input
+                ref={searchInputRef}
                 className="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm text-white placeholder-white/40 backdrop-blur focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40"
                 displayValue={(option: Option | null) => option?.label ?? ""}
                 onChange={(event) => setQuery(event.target.value)}
@@ -163,7 +178,7 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
                 </svg>
               </Combobox.Button>
               {open && (
-                <Combobox.Options className="absolute z-20 mt-2 max-h-60 w-full overflow-auto rounded-2xl border border-white/10 bg-[#08111e]/95 py-2 text-sm shadow-[0_24px_60px_rgba(2,8,16,0.65)] backdrop-blur">
+                <Combobox.Options className="absolute z-20 mt-2 max-h-80 w-full overflow-auto rounded-2xl border border-white/10 bg-[#08111e]/95 py-2 text-sm shadow-[0_24px_60px_rgba(2,8,16,0.65)] backdrop-blur">
                   {filtered.length === 0 ? (
                     <div className="px-4 py-6 text-center text-sm text-white/50">
                       Ничего не найдено
