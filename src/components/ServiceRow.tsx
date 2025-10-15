@@ -155,6 +155,7 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
               <Combobox.Input
                 ref={searchInputRef}
                 className="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm text-white placeholder-white/40 backdrop-blur focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40"
+                style={{ width: 'calc(100% + 6px)', marginLeft: '-3px', marginRight: '-3px' }}
                 displayValue={(option: Option | null) => option?.label ?? ""}
                 onChange={(event) => setQuery(event.target.value)}
                 onFocus={() => {
@@ -221,7 +222,7 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
 
       {/* Mobile Card Layout */}
       {isMobileView && (
-        <div className="space-y-3 pb-5">
+        <div className="space-y-3 pb-8">
           {quoteLines.length === 0 && (
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-6 py-10 text-center text-sm text-white/40">
               Добавьте услуги, чтобы рассчитать смету
@@ -251,12 +252,12 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
               </div>
 
               {/* Details Grid */}
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-4 text-sm" style={{ marginLeft: '-3px', marginRight: '-3px', width: 'calc(100% + 6px)' }}>
                 <div>
-                  <div className="text-xs text-white/50">Количество</div>
+                  <div className="text-xs text-white/50 mb-1">Количество</div>
                   <input
                     type="number"
-                    className="mt-1 w-full appearance-none rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-right text-white focus:border-[#ff7a00]/50 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/30"
+                    className="w-full appearance-none rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-right text-white focus:border-[#ff7a00]/50 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/30"
                     step={1}
                     min={line.minQty ?? 1}
                     value={cartItems.find((item) => item.code === line.code)?.qty ?? line.qty}
@@ -264,20 +265,20 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
                   />
                 </div>
                 <div>
-                  <div className="text-xs text-white/50">Единица</div>
-                  <div className="mt-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-right text-white/70">
+                  <div className="text-xs text-white/50 mb-1">Единица</div>
+                  <div className="bg-white/5 px-3 py-2 text-right text-white/70">
                     {line.unit ?? "ед."}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-white/50">Цена за ед.</div>
-                  <div className="mt-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 font-mono text-right text-white">
+                  <div className="text-xs text-white/50 mb-1">Цена за ед.</div>
+                  <div className="bg-white/5 px-3 py-2 font-mono text-right text-white">
                     {formatCurrency(line.unitPrice)}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-white/50">Сумма</div>
-                  <div className="mt-1 rounded-lg border border-white/10 bg-[#ff7a00]/10 px-2 py-1.5 font-mono text-right font-semibold text-white">
+                  <div className="text-xs text-white/50 mb-1">Сумма</div>
+                  <div className="bg-[#ff7a00]/10 px-3 py-2 font-mono text-right font-semibold text-white">
                     {formatCurrency(line.lineTotal)}
                   </div>
                 </div>

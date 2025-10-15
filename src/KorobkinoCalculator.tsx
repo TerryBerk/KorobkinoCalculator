@@ -1158,7 +1158,7 @@ export function KorobkinoCalculator({
           </Tab.Panels>
 
           {/* Mobile Bottom Tabs */}
-          <Tab.List className="shrink-0 flex gap-0 border-t border-white/10 bg-[rgba(9,18,31,0.95)] backdrop-blur-xl">
+          <Tab.List className="shrink-0 flex gap-0 border-t border-white/10 bg-[rgba(9,18,31,0.95)] backdrop-blur-xl mt-5">
             {tabLabels.map((label) => (
               <Tab
                 key={label}

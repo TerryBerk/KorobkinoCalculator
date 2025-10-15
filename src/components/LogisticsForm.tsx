@@ -120,7 +120,7 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
   const totalCount = quote?.shipments.reduce((sum, shipment) => sum + shipment.count, 0) ?? 0;
 
   return (
-    <div className="space-y-6 pb-5">
+    <div className="space-y-6 pb-8">
       {shipments.map((shipment, index) => {
         const mode = shipment.mode ?? "auto";
         const isManual = mode === "manual";
@@ -276,7 +276,8 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
                   type="number"
                   min={0}
                   className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-right text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/35 sm:px-3"
-                  value={Number.isFinite(shipment.count) ? shipment.count : 0}
+                  placeholder={String(Number.isFinite(shipment.count) ? shipment.count : 0)}
+                  value={shipment.count === 0 ? "" : (Number.isFinite(shipment.count) ? shipment.count : "")}
                   onChange={(event) =>
                     handleShipmentFieldChange(
                       index,
@@ -295,11 +296,8 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
                   type="number"
                   min={0}
                   className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-right text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/35 sm:px-3"
-                  value={
-                    Number.isFinite(shipment.customPricePerShipment)
-                      ? Number(shipment.customPricePerShipment)
-                      : 0
-                  }
+                  placeholder={String(Number.isFinite(shipment.customPricePerShipment) ? Number(shipment.customPricePerShipment) : 0)}
+                  value={shipment.customPricePerShipment === 0 ? "" : (Number.isFinite(shipment.customPricePerShipment) ? Number(shipment.customPricePerShipment) : "")}
                   onChange={(event) =>
                     handleShipmentFieldChange(
                       index,
@@ -318,7 +316,8 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
                 min={0}
                 step="0.1"
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-right text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/35 sm:px-3"
-                value={shipment.pickupVolumeCbm ?? 0}
+                placeholder={String(shipment.pickupVolumeCbm ?? 0)}
+                value={shipment.pickupVolumeCbm === 0 ? "" : (shipment.pickupVolumeCbm ?? "")}
                 onChange={(event) =>
                   handleShipmentFieldChange(
                     index,
@@ -391,7 +390,7 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
             onClick={handleAddShipment}
             className="inline-flex items-center justify-center rounded-xl border border-dashed border-white/25 px-4 py-2 text-sm font-semibold text-white/80 transition hover:border-white/40 hover:text-white"
           >
-            + Добавить отправку
+            + отправка
           </button>
         </div>
       </div>
