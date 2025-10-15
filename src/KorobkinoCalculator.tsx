@@ -1163,7 +1163,7 @@ export function KorobkinoCalculator({
               <Tab
                 key={label}
                 className={({ selected }) =>
-                  `flex-1 px-4 py-4 text-sm font-semibold transition ${
+                  `flex-1 px-4 py-6 text-sm font-semibold transition ${
                     selected
                       ? "bg-[#ff7a00] text-[#05070c]"
                       : "text-white/60 hover:text-white hover:bg-white/5"
