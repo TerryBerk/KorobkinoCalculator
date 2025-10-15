@@ -155,7 +155,6 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
               <Combobox.Input
                 ref={searchInputRef}
                 className="w-full rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm text-white placeholder-white/40 backdrop-blur focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40"
-                style={{ width: 'calc(100% + 6px)', marginLeft: '-3px', marginRight: '-3px' }}
                 displayValue={(option: Option | null) => option?.label ?? ""}
                 onChange={(event) => setQuery(event.target.value)}
                 onFocus={() => {
@@ -252,7 +251,7 @@ export function ServicesTab({ services, cartItems, quoteLines, formatCurrency, o
               </div>
 
               {/* Details Grid */}
-              <div className="grid grid-cols-2 gap-4 text-sm" style={{ marginLeft: '-3px', marginRight: '-3px', width: 'calc(100% + 6px)' }}>
+              <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <div className="text-xs text-white/50 mb-1">Количество</div>
                   <input

@@ -203,7 +203,7 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
                   </div>
                 ) : (
                   <select
-                    className="truncate rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40 sm:px-3"
+                    className="w-full truncate rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40 sm:px-3"
                     value={shipment.marketplace}
                     onChange={(event) =>
                       handleShipmentFieldChange(index, "marketplace", event.target.value)
@@ -233,7 +233,7 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
                   />
                 ) : (
                   <select
-                    className="truncate rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40 sm:px-3"
+                    className="w-full truncate rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40 sm:px-3"
                     value={shipment.location}
                     onChange={(event) =>
                       handleShipmentFieldChange(index, "location", event.target.value)
@@ -253,7 +253,7 @@ export function LogisticsForm({ rows, value, onChange, quote, formatCurrency }: 
               <label className="flex flex-col gap-2 text-sm text-white/70">
                 <span className="font-medium text-white/80">Тип отправки</span>
                 <select
-                  className="truncate rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40 sm:px-3"
+                  className="w-full truncate rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-sm text-white focus:border-[#ff7a00]/60 focus:outline-none focus:ring-2 focus:ring-[#ff7a00]/40 sm:px-3"
                   value={shipment.kind}
                   onChange={(event) =>
                     handleShipmentFieldChange(index, "kind", event.target.value as LogisticsInput["kind"])
